@@ -1,3 +1,5 @@
+import { probeMp4Codecs } from './media/codecSupport'
+
 /**
  * 브라우저 환경 진단.
  *
@@ -23,8 +25,10 @@ export interface Capabilities {
   sharedArrayBuffer: boolean
   /** WebCodecs 인코더·디코더 존재 여부 */
   webCodecs: boolean
-  /** H.264 인코딩 설정이 실제로 지원되는가 */
+  /** H.264 인코딩이 실제로 지원되는가 */
   h264Encode: boolean
+  /** AAC 오디오 인코딩이 실제로 지원되는가 */
+  aacEncode: boolean
   opfs: boolean
   indexedDB: boolean
   /** 저장소 잔여 바이트. 조회 불가 시 null */
@@ -34,27 +38,24 @@ export interface Capabilities {
   checks: CapabilityCheck[]
 }
 
-/** 내보내기 기본값과 같은 H.264 Baseline 1080p 설정으로 지원 여부를 확인한다. */
-const H264_PROBE_CONFIG = {
-  codec: 'avc1.42001f',
-  width: 1920,
-  height: 1080,
-  bitrate: 4_000_000,
-  framerate: 30,
-} as const
-
 function hasWebCodecs(): boolean {
-  return typeof window !== 'undefined' && 'VideoEncoder' in window && 'VideoDecoder' in window
+  return (
+    typeof window !== 'undefined' &&
+    'VideoEncoder' in window &&
+    'VideoDecoder' in window &&
+    'AudioEncoder' in window &&
+    'AudioDecoder' in window
+  )
 }
 
-async function probeH264Encode(): Promise<boolean> {
-  if (!hasWebCodecs()) return false
-  try {
-    const support = await VideoEncoder.isConfigSupported(H264_PROBE_CONFIG)
-    return support.supported === true
-  } catch {
-    return false
-  }
+/**
+ * 내보내기에 실제로 쓰는 경로와 같은 방식으로 확인한다.
+ * `'VideoEncoder' in window` 만으로는 부족하다 — 오픈소스 Chromium처럼
+ * WebCodecs는 있는데 H.264·AAC 코덱만 빠진 환경이 있다.
+ */
+async function probeExportCodecs(): Promise<{ h264: boolean; aac: boolean }> {
+  if (!hasWebCodecs()) return { h264: false, aac: false }
+  return probeMp4Codecs()
 }
 
 function hasOPFS(): boolean {
@@ -108,7 +109,7 @@ export async function detectCapabilities(): Promise<Capabilities> {
   const isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
   const sab = typeof SharedArrayBuffer !== 'undefined'
   const webCodecs = hasWebCodecs()
-  const h264Encode = await probeH264Encode()
+  const { h264: h264Encode, aac: aacEncode } = await probeExportCodecs()
   const opfs = hasOPFS()
   const idb = hasIndexedDB()
   const isIOS = detectIOS()
@@ -137,13 +138,16 @@ export async function detectCapabilities(): Promise<Capabilities> {
         : '미지원. 내보내기는 동작하지만 ffmpeg 방식이라 시간이 훨씬 오래 걸립니다.',
     },
     {
-      label: 'H.264 인코딩 (1080p)',
-      status: h264Encode ? 'ok' : 'warn',
-      detail: h264Encode
-        ? '지원됨. MP4를 바로 만들 수 있습니다.'
-        : webCodecs
-          ? '이 기기에서는 1080p H.264 인코딩 설정이 거부되었습니다. 해상도를 낮추거나 ffmpeg 방식을 씁니다.'
-          : 'WebCodecs가 없어 확인할 수 없습니다.',
+      label: 'MP4 내보내기 (H.264 + AAC)',
+      status: h264Encode && aacEncode ? 'ok' : 'warn',
+      detail:
+        h264Encode && aacEncode
+          ? '지원됨. MP4를 바로 만들 수 있습니다.'
+          : !webCodecs
+            ? 'WebCodecs가 없어 확인할 수 없습니다.'
+            : `이 브라우저에 ${[!h264Encode && 'H.264 영상', !aacEncode && 'AAC 소리']
+                .filter(Boolean)
+                .join('·')} 인코더가 없습니다. MP4를 만들 수 없어 다른 브라우저가 필요합니다.`,
     },
     {
       label: '파일 저장소 (OPFS)',
@@ -181,6 +185,7 @@ export async function detectCapabilities(): Promise<Capabilities> {
     sharedArrayBuffer: sab,
     webCodecs,
     h264Encode,
+    aacEncode,
     opfs,
     indexedDB: idb,
     storageQuota: quota,

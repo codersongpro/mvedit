@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "node tests/export.e2e.mjs"
   },
   "dependencies": {
+    "mediabunny": "^1.58.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
