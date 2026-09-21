@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CapabilityPanel } from './components/CapabilityPanel'
+import { ClipInspector } from './components/ClipInspector'
 import { EditToolbar } from './components/EditToolbar'
 import { ExportPanel } from './components/ExportPanel'
 import { FilePicker } from './components/FilePicker'
@@ -67,10 +68,11 @@ export default function App() {
         <h2 className="text-sm font-semibold text-slate-300">타임라인</h2>
         <EditToolbar />
         <Timeline />
+        {timeline.length > 0 && <ClipInspector />}
         {timeline.length > 0 && (
           <p className="text-xs leading-relaxed text-slate-500">
             눈금을 눌러 위치를 옮기고 분할하세요. 클립을 고르면 양 끝을 끌어 길이를
-            줄이거나 늘릴 수 있습니다.
+            줄이거나 늘릴 수 있습니다. 두 손가락으로 벌리거나 Ctrl+휠로 확대합니다.
             <span className="hidden sm:inline">
               {' '}
               단축키: S 분할 · Delete 삭제 · ←→ 한 프레임 · Ctrl+Z 되돌리기

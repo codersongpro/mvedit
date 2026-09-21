@@ -14,6 +14,7 @@ export function EditToolbar() {
   const future = useProject((state) => state.future)
 
   const split = useProject((state) => state.split)
+  const insertBlank = useProject((state) => state.insertBlank)
   const removeSelected = useProject((state) => state.removeSelected)
   const moveSelected = useProject((state) => state.moveSelected)
   const undo = useProject((state) => state.undo)
@@ -31,6 +32,9 @@ export function EditToolbar() {
       </ToolButton>
       <ToolButton testId="delete" onClick={removeSelected} disabled={!hasSelection} danger>
         삭제
+      </ToolButton>
+      <ToolButton testId="insert-blank" onClick={() => insertBlank()}>
+        빈 화면
       </ToolButton>
 
       <span className="mx-1 h-5 w-px bg-slate-700" />

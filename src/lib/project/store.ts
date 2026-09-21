@@ -4,8 +4,12 @@ import { timelineDuration } from './types'
 import {
   HISTORY_LIMIT,
   clampPlayhead,
+  insertBlankAt,
   moveItem,
   removeItem,
+  setBlankColor,
+  setItemAudio,
+  setItemDuration,
   splitAt,
   trimItem,
   type TrimEdge,
@@ -34,6 +38,10 @@ interface ProjectState {
   nudgePlayhead: (deltaSeconds: number) => void
 
   split: () => void
+  insertBlank: (duration?: number, color?: string) => void
+  setDuration: (id: string, seconds: number) => void
+  setAudio: (id: string, patch: { volume?: number; muted?: boolean }) => void
+  setColor: (id: string, color: string) => void
   removeSelected: () => void
   moveSelected: (delta: number) => void
   trim: (id: string, edge: TrimEdge, offsetInClip: number) => void
@@ -102,6 +110,26 @@ export const useProject = create<ProjectState>((set, get) => {
     split: () => {
       const { timeline, playhead } = get()
       const next = splitAt(timeline, playhead)
+      if (next) commit(next)
+    },
+
+    insertBlank: (duration, color) => {
+      const { timeline, playhead } = get()
+      commit(insertBlankAt(timeline, playhead, duration, color))
+    },
+
+    setDuration: (id, seconds) => {
+      const next = setItemDuration(get().timeline, id, seconds)
+      if (next) commit(next)
+    },
+
+    setAudio: (id, patch) => {
+      const next = setItemAudio(get().timeline, id, patch)
+      if (next) commit(next)
+    },
+
+    setColor: (id, color) => {
+      const next = setBlankColor(get().timeline, id, color)
       if (next) commit(next)
     },
 

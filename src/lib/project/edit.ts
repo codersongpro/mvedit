@@ -1,4 +1,9 @@
-import type { MediaSource, TimelineItem } from './types'
+import {
+  DEFAULT_BLANK_COLOR,
+  DEFAULT_BLANK_DURATION,
+  type MediaSource,
+  type TimelineItem,
+} from './types'
 import { itemDuration, timelineDuration } from './types'
 
 /** 클립이 이보다 짧아지면 사실상 보이지 않으므로 더 줄이지 않는다. */
@@ -135,4 +140,92 @@ export function clamp(value: number, min: number, max: number): number {
 
 export function clampPlayhead(items: TimelineItem[], seconds: number): number {
   return clamp(seconds, 0, timelineDuration(items))
+}
+
+/**
+ * 재생헤드 위치에 빈 화면을 끼워 넣는다 (FR-008).
+ *
+ * 클립 한가운데에 놓였으면 그 클립을 먼저 둘로 나눈 뒤 사이에 넣는다.
+ * 그러지 않으면 "여기에 넣겠다"고 가리킨 지점과 실제로 들어가는 자리가
+ * 달라진다.
+ */
+export function insertBlankAt(
+  items: TimelineItem[],
+  playhead: number,
+  duration = DEFAULT_BLANK_DURATION,
+  color = DEFAULT_BLANK_COLOR,
+): TimelineItem[] {
+  const blank: TimelineItem = {
+    id: crypto.randomUUID(),
+    type: 'blank',
+    sourceId: null,
+    inPoint: 0,
+    outPoint: 0,
+    duration,
+    volume: 1,
+    muted: false,
+    color,
+  }
+
+  if (items.length === 0) return [blank]
+
+  const split = splitAt(items, playhead)
+  if (split) {
+    // 나뉜 자리는 재생헤드 바로 뒤 — 새로 생긴 두 조각 사이다.
+    const located = findItemAt(items, playhead)
+    const at = (located?.index ?? 0) + 1
+    return [...split.slice(0, at), blank, ...split.slice(at)]
+  }
+
+  // 나눌 수 없다는 건 재생헤드가 클립 경계에 있다는 뜻이다.
+  const located = findItemAt(items, playhead)
+  if (!located) return [...items, blank]
+  const at = playhead <= located.startsAt + MIN_CLIP_SECONDS ? located.index : located.index + 1
+  return [...items.slice(0, at), blank, ...items.slice(at)]
+}
+
+/** 이미지·빈 화면의 표시 시간을 직접 지정한다 (FR-009). */
+export function setItemDuration(
+  items: TimelineItem[],
+  id: string,
+  seconds: number,
+): TimelineItem[] | null {
+  const index = items.findIndex((item) => item.id === id)
+  if (index === -1 || items[index].type === 'video') return null
+
+  const next = [...items]
+  next[index] = { ...items[index], duration: Math.max(MIN_CLIP_SECONDS, seconds) }
+  return next
+}
+
+/** 클립 하나의 소리 설정을 바꾼다 (FR-010). */
+export function setItemAudio(
+  items: TimelineItem[],
+  id: string,
+  patch: { volume?: number; muted?: boolean },
+): TimelineItem[] | null {
+  const index = items.findIndex((item) => item.id === id)
+  if (index === -1) return null
+
+  const next = [...items]
+  next[index] = {
+    ...items[index],
+    ...(patch.volume === undefined ? {} : { volume: clamp(patch.volume, 0, 2) }),
+    ...(patch.muted === undefined ? {} : { muted: patch.muted }),
+  }
+  return next
+}
+
+/** 빈 화면의 배경색을 바꾼다. */
+export function setBlankColor(
+  items: TimelineItem[],
+  id: string,
+  color: string,
+): TimelineItem[] | null {
+  const index = items.findIndex((item) => item.id === id)
+  if (index === -1 || items[index].type !== 'blank') return null
+
+  const next = [...items]
+  next[index] = { ...items[index], color }
+  return next
 }

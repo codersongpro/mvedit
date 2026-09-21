@@ -167,7 +167,7 @@ try {
   )
 
   // --- 썸네일 ---
-  const withThumbnail = await page.locator('[data-testid="clip"] img').count()
+  const withThumbnail = await page.locator('[data-testid="clip-filmstrip"]').count()
   check('클립 썸네일 생성', withThumbnail === 1, `${withThumbnail}/1`)
 
   check('페이지 오류 없음', pageErrors.length === 0, pageErrors.join(' | '))

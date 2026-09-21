@@ -4,10 +4,13 @@ import { MIN_CLIP_SECONDS, startOfIndex, type TrimEdge } from '../lib/project/ed
 import { itemDuration, timelineDuration, type MediaSource, type TimelineItem } from '../lib/project/types'
 import { formatClock } from '../lib/format'
 
-const MIN_PX_PER_SECOND = 4
-const MAX_PX_PER_SECOND = 240
+// 1초를 1픽셀로 보면 한 시간짜리 영상도 한눈에 들어오고,
+// 600픽셀이면 30fps 기준 한 프레임이 20픽셀이라 프레임 단위로 집을 수 있다.
+const MIN_PX_PER_SECOND = 1
+const MAX_PX_PER_SECOND = 600
 const DEFAULT_PX_PER_SECOND = 40
 const TRACK_HEIGHT = 72
+const ZOOM_STEP = 1.6
 
 /**
  * 시간축은 철저히 선형으로 그린다. 짧은 클립을 보기 좋게 하려고 최소 폭을
@@ -24,8 +27,44 @@ export function Timeline() {
 
   const [pxPerSecond, setPxPerSecond] = useState(DEFAULT_PX_PER_SECOND)
   const contentRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const total = timelineDuration(timeline)
+
+  /**
+   * 화면의 한 지점을 붙잡은 채 배율만 바꾼다.
+   *
+   * 그냥 배율만 키우면 보고 있던 구간이 화면 밖으로 밀려나, 확대할 때마다
+   * 편집하던 위치를 다시 찾아야 한다. 기준점의 화면상 x 를 유지하도록
+   * 스크롤을 함께 옮긴다.
+   */
+  const zoomAround = useCallback((factor: number, anchorClientX?: number) => {
+    const scroll = scrollRef.current
+    const content = contentRef.current
+    setPxPerSecond((current) => {
+      const next = clampZoom(current * factor)
+      if (!scroll || !content || next === current) return next
+
+      const contentLeft = content.getBoundingClientRect().left
+      const anchorX = anchorClientX ?? scroll.getBoundingClientRect().left + scroll.clientWidth / 2
+      const anchorSeconds = (anchorX - contentLeft) / current
+      // 배율이 바뀐 뒤 같은 시각이 같은 화면 위치에 오도록 스크롤을 민다.
+      requestAnimationFrame(() => {
+        scroll.scrollLeft += anchorSeconds * next - anchorSeconds * current
+      })
+      return next
+    })
+  }, [])
+
+  /** 전체 타임라인이 한 화면에 들어오도록 맞춘다. */
+  const zoomToFit = useCallback(() => {
+    const scroll = scrollRef.current
+    if (!scroll || total <= 0) return
+    // p-2 안쪽 여백 16px 에 더해 2px 을 남긴다. 반올림 때문에 1픽셀이
+    // 삐져나와 가로 스크롤바가 생기는 것을 막는다.
+    setPxPerSecond(clampZoom((scroll.clientWidth - 18) / total))
+    scroll.scrollLeft = 0
+  }, [total])
 
   // 스크롤 컨테이너가 아니라 시간축 내용 요소를 기준으로 잰다.
   // 컨테이너를 기준으로 하면 안쪽 여백만큼 재생헤드가 어긋난다.
@@ -37,6 +76,53 @@ export function Timeline() {
     },
     [pxPerSecond, setPlayhead],
   )
+
+  /** 트랙패드 핀치와 Ctrl+휠. 커서가 가리키는 시각을 붙잡고 확대한다. */
+  const onWheel = useCallback(
+    (event: React.WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      zoomAround(event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, event.clientX)
+    },
+    [zoomAround],
+  )
+
+  const pinchRef = useRef<{ pointers: Map<number, number>; distance: number } | null>(null)
+
+  /** 두 손가락 핀치. 모바일에서는 이게 주된 확대 방법이다. */
+  const onPointerDown = useCallback((event: React.PointerEvent) => {
+    if (event.pointerType !== 'touch') return
+    const state = pinchRef.current ?? { pointers: new Map<number, number>(), distance: 0 }
+    state.pointers.set(event.pointerId, event.clientX)
+    pinchRef.current = state
+  }, [])
+
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent) => {
+      const state = pinchRef.current
+      if (!state || !state.pointers.has(event.pointerId)) return
+      state.pointers.set(event.pointerId, event.clientX)
+      if (state.pointers.size < 2) return
+
+      const [a, b] = [...state.pointers.values()]
+      const distance = Math.abs(a - b)
+      if (state.distance > 0 && distance > 0) {
+        const factor = distance / state.distance
+        // 아주 작은 흔들림까지 반영하면 화면이 떨린다.
+        if (Math.abs(factor - 1) > 0.02) zoomAround(factor, (a + b) / 2)
+      }
+      state.distance = distance
+    },
+    [zoomAround],
+  )
+
+  const endPinch = useCallback((event: React.PointerEvent) => {
+    const state = pinchRef.current
+    if (!state) return
+    state.pointers.delete(event.pointerId)
+    state.distance = 0
+    if (state.pointers.size === 0) pinchRef.current = null
+  }, [])
 
   if (timeline.length === 0) {
     return (
@@ -57,13 +143,23 @@ export function Timeline() {
           <span data-testid="timeline-duration" className="tabular-nums">
             전체 {formatClock(total)}
           </span>
-          <ZoomButtons pxPerSecond={pxPerSecond} onChange={setPxPerSecond} />
+          <ZoomControls
+            pxPerSecond={pxPerSecond}
+            onZoom={zoomAround}
+            onFit={zoomToFit}
+          />
         </div>
       </div>
 
       <div
+        ref={scrollRef}
         data-testid="timeline"
         data-px-per-second={pxPerSecond}
+        onWheel={onWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPinch}
+        onPointerCancel={endPinch}
         className="relative overflow-x-auto rounded-xl bg-slate-900/60 p-2"
       >
         <div
@@ -99,24 +195,36 @@ export function Timeline() {
   )
 }
 
-function ZoomButtons({
+export function clampZoom(value: number): number {
+  return Math.min(MAX_PX_PER_SECOND, Math.max(MIN_PX_PER_SECOND, value))
+}
+
+function ZoomControls({
   pxPerSecond,
-  onChange,
+  onZoom,
+  onFit,
 }: {
   pxPerSecond: number
-  onChange: (value: number) => void
+  onZoom: (factor: number) => void
+  onFit: () => void
 }) {
-  const step = (factor: number) =>
-    onChange(Math.min(MAX_PX_PER_SECOND, Math.max(MIN_PX_PER_SECOND, pxPerSecond * factor)))
-
   return (
     <span className="flex items-center gap-1">
       <button
         type="button"
+        data-testid="zoom-fit"
+        onClick={onFit}
+        className="h-7 rounded bg-slate-800 px-2 text-[11px] text-slate-300 hover:bg-slate-700"
+      >
+        맞춤
+      </button>
+      <button
+        type="button"
         data-testid="zoom-out"
         aria-label="타임라인 축소"
-        onClick={() => step(0.5)}
-        className="h-6 w-6 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
+        disabled={pxPerSecond <= MIN_PX_PER_SECOND}
+        onClick={() => onZoom(1 / ZOOM_STEP)}
+        className="h-7 w-7 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:text-slate-600"
       >
         −
       </button>
@@ -124,8 +232,9 @@ function ZoomButtons({
         type="button"
         data-testid="zoom-in"
         aria-label="타임라인 확대"
-        onClick={() => step(2)}
-        className="h-6 w-6 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
+        disabled={pxPerSecond >= MAX_PX_PER_SECOND}
+        onClick={() => onZoom(ZOOM_STEP)}
+        className="h-7 w-7 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:text-slate-600"
       >
         +
       </button>
@@ -158,7 +267,9 @@ function Ruler({
       onPointerMove={(event) => {
         if (event.buttons > 0) onSeek(event.clientX)
       }}
-      className="relative h-6 cursor-pointer touch-none border-b border-slate-800"
+      // 마지막 눈금 라벨이 시간축 오른쪽으로 삐져나오면 스크롤 너비가 늘어나
+      // "맞춤" 을 눌러도 가로 스크롤이 남는다. 눈금자 안에서 잘라낸다.
+      className="relative h-6 cursor-pointer touch-none overflow-hidden border-b border-slate-800"
     >
       {Array.from({ length: marks }, (_, index) => index * step).map((seconds) => (
         <span
@@ -277,7 +388,21 @@ function Clip({
     >
       <div className="relative h-11 bg-slate-950">
         {source?.thumbnailUrl ? (
-          <img src={source.thumbnailUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+          // 썸네일을 늘리지 않고 원본 비율 그대로 가로로 반복한다.
+          // 클립이 길수록 장면이 여러 번 보여 필름을 보는 느낌이 나고,
+          // 짧은 클립에서도 비율이 찌그러지지 않는다.
+          <div
+            data-testid="clip-filmstrip"
+            role="img"
+            aria-label={source.fileName}
+            className="h-full w-full"
+            style={{
+              backgroundImage: `url(${source.thumbnailUrl})`,
+              backgroundRepeat: 'repeat-x',
+              backgroundSize: 'auto 100%',
+              backgroundPosition: 'left center',
+            }}
+          />
         ) : (
           <div className="h-full w-full" style={{ backgroundColor: item.color }} />
         )}

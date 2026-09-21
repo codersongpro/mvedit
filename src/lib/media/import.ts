@@ -6,8 +6,23 @@ import {
   type TimelineItem,
 } from '../project/types'
 
-const THUMBNAIL_WIDTH = 160
-const THUMBNAIL_HEIGHT = 90
+/**
+ * 썸네일은 원본 비율을 그대로 유지한다. 예전처럼 16:9 로 고정해 두면
+ * 세로 영상이 좌우 여백투성이가 되고, 타임라인에서 클립 폭에 맞춰
+ * 다시 잘리면서 무슨 장면인지 알아볼 수 없게 된다.
+ * 높이만 맞추고 너비는 비율에서 계산해, 타임라인이 가로로 반복해 쓴다.
+ */
+const THUMBNAIL_HEIGHT = 96
+const MIN_THUMBNAIL_WIDTH = 24
+const MAX_THUMBNAIL_WIDTH = 320
+
+function thumbnailWidthFor(width: number, height: number): number {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || height <= 0) {
+    return THUMBNAIL_HEIGHT
+  }
+  const scaled = Math.round((THUMBNAIL_HEIGHT * width) / height)
+  return Math.min(MAX_THUMBNAIL_WIDTH, Math.max(MIN_THUMBNAIL_WIDTH, scaled))
+}
 
 export interface ImportOutcome {
   sources: MediaSource[]
@@ -96,19 +111,17 @@ async function grabThumbnail(
     if (!sample) return null
 
     const canvas = document.createElement('canvas')
-    canvas.width = THUMBNAIL_WIDTH
+    canvas.width = thumbnailWidthFor(videoTrack.displayWidth, videoTrack.displayHeight)
     canvas.height = THUMBNAIL_HEIGHT
     const context = canvas.getContext('2d')
     if (!context) return null
 
-    context.fillStyle = '#020617'
-    context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
-    // drawWithFit 이 회전과 비율을 알아서 처리한다. 직접 계산하면
-    // 세로 촬영 영상 썸네일이 눕는다.
-    sample.drawWithFit(context, { fit: 'contain' })
+    // 캔버스가 이미 원본 비율이므로 cover 로 채워도 잘리는 부분이 없다.
+    // drawWithFit 은 회전까지 처리한다 — 직접 계산하면 세로 영상이 눕는다.
+    sample.drawWithFit(context, { fit: 'cover' })
     sample.close()
 
-    return canvas.toDataURL('image/jpeg', 0.7)
+    return canvas.toDataURL('image/jpeg', 0.75)
   } catch {
     return null
   }
@@ -118,23 +131,12 @@ async function readImage(file: File): Promise<MediaSource | null> {
   const bitmap = await createImageBitmap(file)
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = THUMBNAIL_WIDTH
+    canvas.width = thumbnailWidthFor(bitmap.width, bitmap.height)
     canvas.height = THUMBNAIL_HEIGHT
     const context = canvas.getContext('2d')
     if (!context) return null
 
-    context.fillStyle = '#020617'
-    context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
-    const scale = Math.min(THUMBNAIL_WIDTH / bitmap.width, THUMBNAIL_HEIGHT / bitmap.height)
-    const width = bitmap.width * scale
-    const height = bitmap.height * scale
-    context.drawImage(
-      bitmap,
-      (THUMBNAIL_WIDTH - width) / 2,
-      (THUMBNAIL_HEIGHT - height) / 2,
-      width,
-      height,
-    )
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
 
     return {
       id: crypto.randomUUID(),
@@ -150,7 +152,7 @@ async function readImage(file: File): Promise<MediaSource | null> {
       videoCodec: null,
       audioCodec: null,
       hasAudio: false,
-      thumbnailUrl: canvas.toDataURL('image/jpeg', 0.7),
+      thumbnailUrl: canvas.toDataURL('image/jpeg', 0.75),
     }
   } finally {
     bitmap.close()

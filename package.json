@@ -11,7 +11,8 @@
     "test:e2e": "node tests/export.e2e.mjs",
     "test:import": "node tests/import.e2e.mjs",
     "test:edit": "node tests/edit.e2e.mjs",
-    "test": "npm run test:import && npm run test:edit && npm run test:e2e"
+    "test:clip": "node tests/clip.e2e.mjs",
+    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:e2e"
   },
   "dependencies": {
     "mediabunny": "^1.58.1",
