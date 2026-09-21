@@ -54,8 +54,6 @@ export function FilePicker({
       </button>
       <p className="mt-3 text-xs leading-relaxed text-slate-500">
         여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다.
-        <br />
-        파일은 기기 밖으로 전송되지 않습니다.
       </p>
     </div>
   )

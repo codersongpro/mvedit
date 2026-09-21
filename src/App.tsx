@@ -49,9 +49,6 @@ export default function App() {
       <header>
         <p className="text-xs font-medium tracking-widest text-sky-400 uppercase">CutCap</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">누구나 하는 컷편집</h1>
-        <p className="mt-3 text-sm leading-relaxed text-slate-400">
-          영상은 기기를 벗어나지 않습니다. 업로드도 로그인도 없습니다.
-        </p>
       </header>
 
       <section className="flex flex-col gap-4">
