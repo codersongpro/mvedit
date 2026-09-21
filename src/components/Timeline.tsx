@@ -261,7 +261,12 @@ function Ruler({
     <div
       data-testid="ruler"
       onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId)
+        // 캡처는 끌기를 매끄럽게 할 뿐이다. 실패하더라도 위치 이동은 막지 않는다.
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId)
+        } catch {
+          /* 이 포인터는 캡처할 수 없다 */
+        }
         onSeek(event.clientX)
       }}
       onPointerMove={(event) => {

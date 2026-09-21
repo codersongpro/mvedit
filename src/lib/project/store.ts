@@ -24,6 +24,7 @@ interface ProjectState {
   selectedItemId: string | null
   /** 타임라인 시작부터의 시각(초) */
   playhead: number
+  playing: boolean
 
   /** 되돌리기용 이전 상태들. 가장 최근이 배열 끝. */
   past: TimelineItem[][]
@@ -35,6 +36,8 @@ interface ProjectState {
 
   select: (id: string | null) => void
   setPlayhead: (seconds: number) => void
+  setPlaying: (playing: boolean) => void
+  togglePlay: () => void
   nudgePlayhead: (deltaSeconds: number) => void
 
   split: () => void
@@ -58,6 +61,7 @@ const EMPTY = {
   importing: false,
   selectedItemId: null,
   playhead: 0,
+  playing: false,
   past: [] as TimelineItem[][],
   future: [] as TimelineItem[][],
 }
@@ -75,6 +79,8 @@ export const useProject = create<ProjectState>((set, get) => {
       past: [...state.past, state.timeline].slice(-HISTORY_LIMIT),
       timeline: next,
       future: [],
+      // 편집하는 동안 재생이 계속되면 화면과 타임라인이 어긋난다.
+      playing: false,
       playhead: clampPlayhead(next, state.playhead),
       selectedItemId: next.some((item) => item.id === state.selectedItemId)
         ? state.selectedItemId
@@ -101,6 +107,17 @@ export const useProject = create<ProjectState>((set, get) => {
 
     setPlayhead: (seconds) =>
       set((state) => ({ playhead: clampPlayhead(state.timeline, seconds) })),
+
+    setPlaying: (playing) => set({ playing }),
+
+    togglePlay: () =>
+      set((state) => {
+        if (state.timeline.length === 0) return state
+        // 끝에서 다시 누르면 처음부터 재생한다. 그러지 않으면 아무 반응이
+        // 없는 것처럼 보인다.
+        const atEnd = state.playhead >= timelineDuration(state.timeline) - 0.05
+        return { playing: !state.playing, playhead: !state.playing && atEnd ? 0 : state.playhead }
+      }),
 
     nudgePlayhead: (deltaSeconds) =>
       set((state) => ({

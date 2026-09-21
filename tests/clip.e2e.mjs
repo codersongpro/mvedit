@@ -241,6 +241,7 @@ try {
   check('AC-010 준비: 영상 2개 총 00:08', beforeBlank.includes('00:08'), beforeBlank)
 
   // 두 클립 사이(4초 지점)에 넣는다.
+  await page.locator('[data-testid="ruler"]').scrollIntoViewIfNeeded()
   const ruler = await page.locator('[data-testid="ruler"]').boundingBox()
   await page.mouse.click(ruler.x + 4 * (await scale()), ruler.y + ruler.height / 2)
   await page.click('[data-testid="insert-blank"]')

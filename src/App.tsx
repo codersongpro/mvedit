@@ -4,6 +4,7 @@ import { ClipInspector } from './components/ClipInspector'
 import { EditToolbar } from './components/EditToolbar'
 import { ExportPanel } from './components/ExportPanel'
 import { FilePicker } from './components/FilePicker'
+import { Preview } from './components/Preview'
 import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
 import { useProject } from './lib/project/store'
@@ -61,6 +62,13 @@ export default function App() {
         <RejectedFiles files={rejected} onDismiss={clearRejected} />
       </section>
 
+      {timeline.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold text-slate-300">미리보기</h2>
+          <Preview />
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-slate-300">타임라인</h2>
         <EditToolbar />
@@ -72,7 +80,7 @@ export default function App() {
             줄이거나 늘릴 수 있습니다. 두 손가락으로 벌리거나 Ctrl+휠로 확대합니다.
             <span className="hidden sm:inline">
               {' '}
-              단축키: S 분할 · Delete 삭제 · ←→ 한 프레임 · Ctrl+Z 되돌리기
+              단축키: Space 재생 · S 분할 · Delete 삭제 · ←→ 한 프레임 · Ctrl+Z 되돌리기
             </span>
           </p>
         )}

@@ -7,6 +7,7 @@ export function useEditShortcuts() {
   const split = useProject((state) => state.split)
   const removeSelected = useProject((state) => state.removeSelected)
   const nudgePlayhead = useProject((state) => state.nudgePlayhead)
+  const togglePlay = useProject((state) => state.togglePlay)
   const undo = useProject((state) => state.undo)
   const redo = useProject((state) => state.redo)
 
@@ -33,6 +34,10 @@ export function useEditShortcuts() {
       if (mod) return
 
       switch (event.key) {
+        case ' ':
+          event.preventDefault()
+          togglePlay()
+          break
         case 's':
         case 'S':
         case 'ㄴ':
@@ -57,5 +62,5 @@ export function useEditShortcuts() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [split, removeSelected, nudgePlayhead, undo, redo])
+  }, [split, removeSelected, nudgePlayhead, togglePlay, undo, redo])
 }

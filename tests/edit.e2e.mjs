@@ -131,6 +131,7 @@ try {
   /** 눈금자의 지정한 시각 위치를 눌러 재생헤드를 옮긴다. */
   async function seekTo(seconds) {
     const scale = await pxPerSecond()
+    await page.locator('[data-testid="ruler"]').scrollIntoViewIfNeeded()
     const ruler = await page.locator('[data-testid="ruler"]').boundingBox()
     await page.mouse.click(ruler.x + seconds * scale, ruler.y + ruler.height / 2)
     await page.waitForFunction(
@@ -144,6 +145,7 @@ try {
   /** 선택된 클립의 손잡이를 끌어 길이를 바꾼다. */
   async function dragTrim(edge, deltaSeconds) {
     const scale = await pxPerSecond()
+    await page.locator(`[data-testid="trim-${edge}"]`).scrollIntoViewIfNeeded()
     const handle = await page.locator(`[data-testid="trim-${edge}"]`).boundingBox()
     const startX = handle.x + handle.width / 2
     const y = handle.y + handle.height / 2
