@@ -88,6 +88,9 @@ try {
    * (픽셀은 가로로 저장되고 회전은 메타데이터에만 기록됨).
    */
   async function runCase({ label, rotation }) {
+    // 타임라인은 누적되므로 케이스마다 초기화한다. 그러지 않으면
+    // 두 번째 케이스가 첫 번째 케이스의 클립을 내보낸다.
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
     await installHelpers(page)
     const fixture = await page.evaluate(
       ([bundle, options]) => globalThis.__helpers.buildFixture({ bundleSource: bundle, ...options }),
@@ -101,19 +104,20 @@ try {
     )
 
     await page.setInputFiles('[data-testid="file-input"]', fixturePath)
-    await page.waitForSelector('[data-testid="media-info"]', { timeout: 20_000 })
+    await page.waitForSelector('[data-testid="clip"]', { timeout: 20_000 })
 
     // 회전된 영상은 가로·세로가 바뀌어 보이는 게 정상이다.
     const expectedW = rotation % 180 === 0 ? FIXTURE.widthPx : FIXTURE.heightPx
     const expectedH = rotation % 180 === 0 ? FIXTURE.heightPx : FIXTURE.widthPx
 
-    const infoText = await page.locator('[data-testid="media-info"]').innerText()
     check(
-      `[${label}] 메타데이터 — ${expectedW}×${expectedH}`,
-      infoText.includes(`${expectedW}×${expectedH}`),
-      infoText.replace(/\n/g, ' / '),
+      `[${label}] 타임라인에 클립 1개`,
+      (await page.locator('[data-testid="clip"]').count()) === 1,
     )
-    check(`[${label}] 메타데이터 — 길이 00:03`, infoText.includes('00:03'))
+    check(
+      `[${label}] 전체 길이 00:03`,
+      (await page.locator('[data-testid="timeline-duration"]').innerText()).includes('00:03'),
+    )
 
     await page.click('[data-testid="export-button"]')
     await page.waitForSelector('[data-testid="export-done"]', { timeout: 120_000 })

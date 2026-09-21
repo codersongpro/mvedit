@@ -4,15 +4,15 @@ export function FilePicker({
   onSelect,
   disabled,
 }: {
-  onSelect: (file: File) => void
+  onSelect: (files: File[]) => void
   disabled?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
   const handleFiles = (files: FileList | null) => {
-    const file = files?.[0]
-    if (file) onSelect(file)
+    const list = Array.from(files ?? [])
+    if (list.length > 0) onSelect(list)
   }
 
   return (
@@ -34,11 +34,13 @@ export function FilePicker({
       <input
         ref={inputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,image/*"
+        multiple
         className="sr-only"
         data-testid="file-input"
         onChange={(event) => {
           handleFiles(event.target.files)
+          // 같은 파일을 다시 골라도 change 가 발생하도록 비운다.
           event.target.value = ''
         }}
       />
@@ -48,10 +50,12 @@ export function FilePicker({
         onClick={() => inputRef.current?.click()}
         className="rounded-lg bg-sky-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
       >
-        영상 선택
+        영상·사진 추가
       </button>
-      <p className="mt-3 text-xs text-slate-500">
-        파일을 여기로 끌어다 놓아도 됩니다. 영상은 기기 밖으로 전송되지 않습니다.
+      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+        여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다.
+        <br />
+        파일은 기기 밖으로 전송되지 않습니다.
       </p>
     </div>
   )

@@ -8,12 +8,15 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "node tests/export.e2e.mjs"
+    "test:e2e": "node tests/export.e2e.mjs",
+    "test:import": "node tests/import.e2e.mjs",
+    "test": "npm run test:import && npm run test:e2e"
   },
   "dependencies": {
     "mediabunny": "^1.58.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

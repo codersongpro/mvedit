@@ -1,39 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FilePicker } from './FilePicker'
-import type { MediaInfo } from '../lib/media/probe'
+import { findSource, useProject } from '../lib/project/store'
 import { pickSupportedProfile } from '../lib/media/codecSupport'
 import {
-  EXPORT_ERROR_MESSAGE,
   MP4_PROFILE,
   type ExportCodecProfile,
   type ExportWorkerRequest,
   type ExportWorkerResponse,
 } from '../lib/media/exportTypes'
-import { formatBytes } from '../lib/capabilities'
+import { formatBytes } from '../lib/format'
 
 type Phase =
   | { status: 'idle' }
-  | { status: 'probing' }
-  | { status: 'ready' }
   | { status: 'exporting'; progress: number }
   | { status: 'done'; url: string; fileName: string; size: number; elapsedMs: number }
   | { status: 'error'; message: string }
-
-function formatDuration(seconds: number): string {
-  const total = Math.round(seconds)
-  const mm = String(Math.floor(total / 60)).padStart(2, '0')
-  const ss = String(total % 60).padStart(2, '0')
-  return `${mm}:${ss}`
-}
 
 function baseName(fileName: string): string {
   const dot = fileName.lastIndexOf('.')
   return dot > 0 ? fileName.slice(0, dot) : fileName
 }
 
+/**
+ * 타임라인의 첫 영상 클립 하나를 내보낸다.
+ *
+ * 타임라인 전체를 하나로 합쳐 내보내는 것은 이후 단계에서 붙인다.
+ * 지금은 인코딩 경로가 계속 살아 있는지 확인하는 용도다.
+ */
 export function ExportPanel() {
-  const [file, setFile] = useState<File | null>(null)
-  const [info, setInfo] = useState<MediaInfo | null>(null)
+  const sources = useProject((state) => state.sources)
+  const timeline = useProject((state) => state.timeline)
   const [profile, setProfile] = useState<ExportCodecProfile | null>(null)
   const [phase, setPhase] = useState<Phase>({ status: 'idle' })
 
@@ -41,37 +36,24 @@ export function ExportPanel() {
   const startedAtRef = useRef(0)
   const objectUrlRef = useRef<string | null>(null)
 
+  const firstVideoItem = timeline.find((item) => item.type === 'video') ?? null
+  const firstVideoSource = findSource(sources, firstVideoItem?.sourceId ?? null)
+
   useEffect(() => {
     void pickSupportedProfile().then(setProfile)
   }, [])
 
-  // 생성한 object URL과 워커는 반드시 정리한다. 영상 버퍼는 수백 MB가 될 수 있다.
-  useEffect(() => {
-    return () => {
+  // 영상 버퍼는 수백 MB가 될 수 있다. 워커와 object URL을 반드시 정리한다.
+  useEffect(
+    () => () => {
       workerRef.current?.terminate()
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
-    }
-  }, [])
-
-  const handleSelect = useCallback(async (selected: File) => {
-    setFile(selected)
-    setInfo(null)
-    setPhase({ status: 'probing' })
-
-    const { probeMedia } = await import('../lib/media/probe')
-    const result = await probeMedia(selected)
-
-    if (!result.ok) {
-      setPhase({ status: 'error', message: EXPORT_ERROR_MESSAGE[result.code] })
-      return
-    }
-
-    setInfo(result.info)
-    setPhase({ status: 'ready' })
-  }, [])
+    },
+    [],
+  )
 
   const startExport = useCallback(() => {
-    if (!file || !profile) return
+    if (!firstVideoSource || !profile) return
 
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current)
@@ -99,7 +81,7 @@ export function ExportPanel() {
         setPhase({
           status: 'done',
           url,
-          fileName: `${baseName(file.name)}_cutcap.${message.fileExtension}`,
+          fileName: `${baseName(firstVideoSource.fileName)}_cutcap.${message.fileExtension}`,
           size: blob.size,
           elapsedMs: performance.now() - startedAtRef.current,
         })
@@ -111,25 +93,23 @@ export function ExportPanel() {
       workerRef.current = null
     }
 
-    const request: ExportWorkerRequest = { type: 'start', file, profile }
+    const request: ExportWorkerRequest = { type: 'start', file: firstVideoSource.file, profile }
     worker.postMessage(request)
-  }, [file, profile])
+  }, [firstVideoSource, profile])
 
   const cancelExport = useCallback(() => {
     const request: ExportWorkerRequest = { type: 'cancel' }
     workerRef.current?.postMessage(request)
   }, [])
 
-  const busy = phase.status === 'probing' || phase.status === 'exporting'
+  if (!firstVideoSource) return null
 
   return (
-    <div className="flex flex-col gap-4">
-      <FilePicker onSelect={handleSelect} disabled={busy} />
-
+    <div className="flex flex-col gap-3">
       {profile && profile.id !== MP4_PROFILE.id && (
         <p className="rounded-lg bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300">
           이 브라우저는 MP4(H.264) 인코딩을 지원하지 않아 시험용으로 {profile.label} 형식으로
-          내보냅니다. 실제 서비스에서는 MP4로만 내보냅니다.
+          내보냅니다.
         </p>
       )}
       {profile === null && (
@@ -139,31 +119,14 @@ export function ExportPanel() {
         </p>
       )}
 
-      {info && (
-        <dl
-          data-testid="media-info"
-          className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-slate-900/60 p-4 text-sm sm:grid-cols-3"
-        >
-          <Field label="파일" value={info.fileName} wide />
-          <Field label="길이" value={formatDuration(info.durationSeconds)} />
-          <Field label="크기" value={`${info.displayWidth}×${info.displayHeight}`} />
-          <Field label="용량" value={formatBytes(info.fileSize)} />
-          <Field label="영상 코덱" value={info.videoCodec ?? '없음'} />
-          <Field label="소리" value={info.hasAudio ? (info.audioCodec ?? '있음') : '없음'} />
-          <Field label="회전" value={`${info.rotation}°`} />
-        </dl>
-      )}
-
-      {phase.status === 'probing' && <Notice>파일을 읽는 중…</Notice>}
-
-      {info && phase.status === 'ready' && profile && (
+      {phase.status !== 'exporting' && profile && (
         <button
           type="button"
           data-testid="export-button"
           onClick={startExport}
-          className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-emerald-400"
+          className="self-start rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-emerald-400"
         >
-          {profile.label}로 내보내기
+          첫 영상 내보내기
         </button>
       )}
 
@@ -177,7 +140,11 @@ export function ExportPanel() {
           </div>
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span data-testid="export-progress">{Math.round(phase.progress * 100)}%</span>
-            <button type="button" onClick={cancelExport} className="text-rose-300 hover:text-rose-200">
+            <button
+              type="button"
+              onClick={cancelExport}
+              className="text-rose-300 hover:text-rose-200"
+            >
               취소
             </button>
           </div>
@@ -213,17 +180,4 @@ export function ExportPanel() {
       )}
     </div>
   )
-}
-
-function Field({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
-  return (
-    <div className={wide ? 'col-span-2 sm:col-span-3' : undefined}>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="truncate text-slate-200">{value}</dd>
-    </div>
-  )
-}
-
-function Notice({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-400">{children}</p>
 }
