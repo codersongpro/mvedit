@@ -99,7 +99,7 @@ export function ExportPanel() {
         setPhase({
           status: 'done',
           url,
-          fileName: `${baseName(file.name)}_mvedit.${message.fileExtension}`,
+          fileName: `${baseName(file.name)}_cutcap.${message.fileExtension}`,
           size: blob.size,
           elapsedMs: performance.now() - startedAtRef.current,
         })

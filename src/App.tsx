@@ -19,7 +19,7 @@ export default function App() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-10 px-4 py-10">
       <header>
-        <p className="text-xs font-medium tracking-widest text-sky-400 uppercase">MVEdit</p>
+        <p className="text-xs font-medium tracking-widest text-sky-400 uppercase">CutCap</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">
           브라우저에서 바로 자르는 무료 영상 편집기
         </h1>

@@ -65,7 +65,7 @@ try {
   const { chromium } = await loadPlaywright()
   const bundleSource = await readFile(bundlePath, 'utf8')
   const helpers = await readFile(join(here, 'fixture.js'), 'utf8')
-  const workDir = await mkdtemp(join(tmpdir(), 'mvedit-e2e-'))
+  const workDir = await mkdtemp(join(tmpdir(), 'cutcap-e2e-'))
 
   browser = await chromium.launch()
   const context = await browser.newContext({ acceptDownloads: true })
