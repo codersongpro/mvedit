@@ -230,6 +230,93 @@ try {
   await page.click('[data-testid="delete"]')
   check('클립을 지우면 그 자막도 사라짐', (await rowCount()) === 0)
 
+  // ---------- 타임라인에서 자막 길이 조절 ----------
+  await load([`가.${clip.extension}`])
+  await seekTo(2)
+  await page.click('[data-testid="add-subtitle"]')
+  await page.fill('[data-testid="subtitle-text"]', '끌어서 조절')
+
+  check('자막이 타임라인에 표시됨', (await page.locator('[data-testid="subtitle-block"]').count()) === 1)
+  check(
+    '새 자막은 바로 선택돼 손잡이가 보인다',
+    (await page.locator('[data-testid="subtitle-trim-end"]').count()) === 1,
+  )
+
+  const blockEnd = () =>
+    page.$eval('[data-testid="subtitle-block"]', (node) => Number(node.dataset.end))
+  const blockStart = () =>
+    page.$eval('[data-testid="subtitle-block"]', (node) => Number(node.dataset.start))
+
+  /** 자막 손잡이를 끌어 시각을 옮긴다. */
+  async function dragSubtitle(edge, deltaSeconds) {
+    const selector = `[data-testid="subtitle-trim-${edge}"]`
+    await page.locator(selector).scrollIntoViewIfNeeded()
+    const box = await page.locator(selector).boundingBox()
+    const px = await scale()
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    for (let i = 1; i <= 4; i += 1) {
+      await page.mouse.move(x + (deltaSeconds * px * i) / 4, y)
+    }
+    await page.mouse.up()
+  }
+
+  const beforeEnd = await blockEnd()
+  await dragSubtitle('end', 2)
+  check(
+    '끝 손잡이를 끌면 자막이 길어진다',
+    (await blockEnd()) - beforeEnd > 1.5,
+    `${beforeEnd.toFixed(2)} → ${(await blockEnd()).toFixed(2)}초`,
+  )
+  check(
+    '길이 입력란도 함께 갱신된다',
+    Number(await page.inputValue('[data-testid="subtitle-duration"]')) > 3.5,
+    await page.inputValue('[data-testid="subtitle-duration"]'),
+  )
+
+  const beforeStart = await blockStart()
+  await dragSubtitle('start', 1)
+  check(
+    '시작 손잡이를 끌면 시작이 밀린다',
+    (await blockStart()) - beforeStart > 0.5,
+    `${beforeStart.toFixed(2)} → ${(await blockStart()).toFixed(2)}초`,
+  )
+
+  await page.click('[data-testid="undo"]')
+  check(
+    '자막 길이 조절도 되돌릴 수 있다',
+    Math.abs((await blockStart()) - beforeStart) < 0.1,
+    `${(await blockStart()).toFixed(2)}초`,
+  )
+
+  // 클립 범위를 넘지 않는다 (10초 클립)
+  await dragSubtitle('end', 30)
+  check('자막이 클립 끝을 넘지 않는다', (await blockEnd()) <= 10.01, `${(await blockEnd()).toFixed(2)}초`)
+
+  // ---------- 도움말 / 버튼 이름 ----------
+  check(
+    '긴 조작 설명이 화면에서 사라짐',
+    !(await page.content()).includes('눈금이나 클립을 눌러 위치를 옮기고 자르세요'),
+  )
+  check('도움말이 기본으로 닫혀 있음', (await page.locator('[data-testid="help-panel"]').count()) === 0)
+  await page.click('[data-testid="help-toggle"]')
+  const help = await page.locator('[data-testid="help-panel"]').innerText()
+  check('도움말에 단축키 안내가 있음', help.includes('Space') && help.includes('Ctrl+Z'), help.split('\n')[0])
+  check('도움말에 조작법 안내가 있음', help.includes('두 손가락'))
+
+  check(
+    '내보내기 버튼 이름이 영상 내보내기',
+    (await page.locator('[data-testid="export-button"]').innerText()).trim() === '영상 내보내기',
+    (await page.locator('[data-testid="export-button"]').innerText()).trim(),
+  )
+  check(
+    '제목이 누구나 하는 컷편집과 자막넣기',
+    (await page.locator('h1').innerText()).trim() === '누구나 하는 컷편집과 자막넣기',
+    (await page.locator('h1').innerText()).trim(),
+  )
+
   check('페이지 오류 없음', pageErrors.length === 0, pageErrors.join(' | '))
 } catch (error) {
   console.error('\n테스트 실행 중 오류:', error)

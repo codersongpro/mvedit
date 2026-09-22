@@ -35,6 +35,7 @@ interface ProjectState {
   importing: boolean
 
   selectedItemId: string | null
+  selectedSubtitleId: string | null
   /** 타임라인 시작부터의 시각(초) */
   playhead: number
   playing: boolean
@@ -51,6 +52,7 @@ interface ProjectState {
   clearRejected: () => void
 
   select: (id: string | null) => void
+  selectSubtitle: (id: string | null) => void
   setPlayhead: (seconds: number) => void
   setPlaying: (playing: boolean) => void
   togglePlay: () => void
@@ -89,6 +91,7 @@ const EMPTY = {
   rejected: [] as RejectedFile[],
   importing: false,
   selectedItemId: null,
+  selectedSubtitleId: null,
   playhead: 0,
   playing: false,
   past: [] as Snapshot[],
@@ -149,6 +152,8 @@ export const useProject = create<ProjectState>((set, get) => {
     clearRejected: () => set({ rejected: [] }),
 
     select: (id) => set({ selectedItemId: id }),
+
+    selectSubtitle: (id) => set({ selectedSubtitleId: id }),
 
     setPlayhead: (seconds) =>
       set((state) => ({ playhead: clampPlayhead(state.timeline, seconds) })),
@@ -235,6 +240,7 @@ export const useProject = create<ProjectState>((set, get) => {
         text,
       }
       commit(get().timeline, [...get().subtitles, subtitle])
+      set({ selectedSubtitleId: subtitle.id })
     },
 
     updateSubtitle: (id, patch) => {
@@ -250,11 +256,13 @@ export const useProject = create<ProjectState>((set, get) => {
       commit(timeline, next)
     },
 
-    removeSubtitle: (id) =>
+    removeSubtitle: (id) => {
+      if (get().selectedSubtitleId === id) set({ selectedSubtitleId: null })
       commit(
         get().timeline,
         get().subtitles.filter((subtitle) => subtitle.id !== id),
-      ),
+      )
+    },
 
     setSubtitleStyle: (patch) =>
       set((state) => ({ subtitleStyle: { ...state.subtitleStyle, ...patch } })),

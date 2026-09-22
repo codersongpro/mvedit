@@ -119,6 +119,12 @@ export function ExportPanel() {
         </p>
       )}
 
+      {timeline.filter((item) => item.type === 'video').length > 1 && (
+        <p className="text-xs text-slate-500">
+          지금은 첫 영상 클립만 내보냅니다. 타임라인 전체를 하나로 합치는 기능은 준비 중입니다.
+        </p>
+      )}
+
       {phase.status !== 'exporting' && profile && (
         <button
           type="button"
@@ -126,7 +132,7 @@ export function ExportPanel() {
           onClick={startExport}
           className="self-start rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-emerald-400"
         >
-          첫 영상 내보내기
+          영상 내보내기
         </button>
       )}
 

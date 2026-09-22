@@ -4,6 +4,7 @@ import { ClipInspector } from './components/ClipInspector'
 import { EditToolbar } from './components/EditToolbar'
 import { ExportPanel } from './components/ExportPanel'
 import { FilePicker } from './components/FilePicker'
+import { HelpPanel } from './components/HelpPanel'
 import { Preview } from './components/Preview'
 import { SubtitlePanel } from './components/SubtitlePanel'
 import { RejectedFiles } from './components/RejectedFiles'
@@ -50,7 +51,9 @@ export default function App() {
     <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 px-4 py-10">
       <header>
         <p className="text-xs font-medium tracking-widest text-sky-400 uppercase">CutCap</p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">누구나 하는 컷편집</h1>
+        <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">
+          누구나 하는 컷편집과 자막넣기
+        </h1>
       </header>
 
       <section className="flex flex-col gap-4">
@@ -75,16 +78,7 @@ export default function App() {
         <EditToolbar />
         <Timeline />
         {timeline.length > 0 && <ClipInspector />}
-        {timeline.length > 0 && (
-          <p className="text-xs leading-relaxed text-slate-500">
-            눈금이나 클립을 눌러 위치를 옮기고 자르세요. 클립을 고르면 양 끝을 끌어 길이를
-            줄이거나 늘릴 수 있습니다. 두 손가락으로 벌리거나 Ctrl+휠로 확대합니다.
-            <span className="hidden sm:inline">
-              {' '}
-              단축키: Space 재생 · S 자르기 · Delete 지우기 · ←→ 한 프레임 · Ctrl+Z 되돌리기
-            </span>
-          </p>
-        )}
+        <HelpPanel />
       </section>
 
       {timeline.length > 0 && (

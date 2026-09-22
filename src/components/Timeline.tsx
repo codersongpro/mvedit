@@ -1,7 +1,16 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { findSource, useProject } from '../lib/project/store'
 import { MIN_CLIP_SECONDS, type TrimEdge } from '../lib/project/edit'
-import { itemDuration, timelineDuration, type MediaSource, type TimelineItem } from '../lib/project/types'
+import { toSegments } from '../lib/project/playback'
+import { clipRange } from '../lib/project/subtitles'
+import {
+  itemDuration,
+  timelineDuration,
+  MIN_SUBTITLE_SECONDS,
+  type MediaSource,
+  type Subtitle,
+  type TimelineItem,
+} from '../lib/project/types'
 import { formatClock } from '../lib/format'
 
 // 1초를 1픽셀로 보면 한 시간짜리 영상도 한눈에 들어오고,
@@ -10,6 +19,7 @@ const MIN_PX_PER_SECOND = 1
 const MAX_PX_PER_SECOND = 600
 const DEFAULT_PX_PER_SECOND = 40
 const TRACK_HEIGHT = 72
+const SUBTITLE_LANE_HEIGHT = 30
 const ZOOM_STEP = 1.6
 
 /**
@@ -24,12 +34,46 @@ export function Timeline() {
   const selectedItemId = useProject((state) => state.selectedItemId)
   const select = useProject((state) => state.select)
   const setPlayhead = useProject((state) => state.setPlayhead)
+  const subtitles = useProject((state) => state.subtitles)
+  const selectedSubtitleId = useProject((state) => state.selectedSubtitleId)
+  const selectSubtitle = useProject((state) => state.selectSubtitle)
+  const updateSubtitle = useProject((state) => state.updateSubtitle)
 
   const [pxPerSecond, setPxPerSecond] = useState(DEFAULT_PX_PER_SECOND)
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const total = timelineDuration(timeline)
+
+  /**
+   * 자막을 타임라인 좌표로 환산한다.
+   *
+   * 자막은 클립 원본의 시간축에 저장돼 있어 그대로는 화면에 놓을 수 없다.
+   * 클립이 타임라인에서 시작하는 위치를 더해 옮긴다.
+   */
+  const placedSubtitles = useMemo(() => {
+    const segments = toSegments(timeline)
+    const byClip = new Map(segments.map((segment) => [segment.item.id, segment]))
+
+    return subtitles
+      .map((subtitle) => {
+        const segment = byClip.get(subtitle.clipId)
+        if (!segment) return null
+
+        const range = clipRange(segment.item)
+        // 트림으로 클립 밖에 나간 부분은 보이지 않으므로 잘라서 그린다.
+        const start = Math.max(subtitle.start, range.start)
+        const end = Math.min(subtitle.end, range.end)
+        if (end - start <= 0) return null
+
+        return {
+          subtitle,
+          left: segment.start + (start - range.start),
+          width: end - start,
+        }
+      })
+      .filter((placed): placed is NonNullable<typeof placed> => placed !== null)
+  }, [subtitles, timeline])
 
   /**
    * 화면의 한 지점을 붙잡은 채 배율만 바꾼다.
@@ -184,6 +228,40 @@ export function Timeline() {
                   // 클립 앞으로 보내면 보려던 장면을 다시 찾아가야 한다.
                   seekFromPointer(clientX)
                 }}
+              />
+            ))}
+          </div>
+
+          <div
+            data-testid="subtitle-lane"
+            className="relative mt-1"
+            style={{ height: `${SUBTITLE_LANE_HEIGHT}px` }}
+          >
+            {placedSubtitles.length === 0 && (
+              <span className="absolute inset-y-0 left-0 flex items-center text-[10px] text-slate-600">
+                자막
+              </span>
+            )}
+            {placedSubtitles.map(({ subtitle, left, width }) => (
+              <SubtitleBlock
+                key={subtitle.id}
+                subtitle={subtitle}
+                left={left}
+                width={width}
+                pxPerSecond={pxPerSecond}
+                selected={subtitle.id === selectedSubtitleId}
+                onSelect={() => {
+                  selectSubtitle(subtitle.id)
+                  setPlayhead(left)
+                }}
+                onTrim={(edge, deltaSeconds) =>
+                  updateSubtitle(
+                    subtitle.id,
+                    edge === 'start'
+                      ? { start: subtitle.start + deltaSeconds }
+                      : { end: subtitle.end + deltaSeconds },
+                  )
+                }
               />
             ))}
           </div>
@@ -452,5 +530,109 @@ function TrimHandle({
         side === 'start' ? 'left-0' : 'right-0'
       }`}
     />
+  )
+}
+
+/**
+ * 타임라인 위의 자막 한 덩이. 양 끝을 끌어 시작과 끝을 옮긴다.
+ *
+ * 클립 트림과 같은 방식으로 끄는 동안에는 화면만 미리 바꾸고, 손을 뗄 때
+ * 한 번만 기록한다. 움직일 때마다 기록하면 되돌리기 한 번에 1픽셀씩만 돌아간다.
+ */
+function SubtitleBlock({
+  subtitle,
+  left,
+  width,
+  pxPerSecond,
+  selected,
+  onSelect,
+  onTrim,
+}: {
+  subtitle: Subtitle
+  left: number
+  width: number
+  pxPerSecond: number
+  selected: boolean
+  onSelect: () => void
+  onTrim: (edge: TrimEdge, deltaSeconds: number) => void
+}) {
+  const [draft, setDraft] = useState<{ edge: TrimEdge; deltaPx: number } | null>(null)
+
+  const deltaSeconds = draft ? draft.deltaPx / pxPerSecond : 0
+  const previewLeft = draft?.edge === 'start' ? left + deltaSeconds : left
+  const previewWidth = Math.max(
+    MIN_SUBTITLE_SECONDS,
+    draft === null ? width : draft.edge === 'start' ? width - deltaSeconds : width + deltaSeconds,
+  )
+
+  const startDrag = (edge: TrimEdge) => (event: React.PointerEvent) => {
+    event.stopPropagation()
+    event.preventDefault()
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      /* 이 포인터는 캡처할 수 없다 */
+    }
+
+    const originX = event.clientX
+    setDraft({ edge, deltaPx: 0 })
+
+    let lastDeltaPx = 0
+    const onMove = (move: PointerEvent) => {
+      lastDeltaPx = move.clientX - originX
+      setDraft({ edge, deltaPx: lastDeltaPx })
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      setDraft(null)
+    }
+    const onUp = () => {
+      stop()
+      const seconds = lastDeltaPx / pxPerSecond
+      if (Math.abs(seconds) >= 0.01) onTrim(edge, seconds)
+    }
+    const onCancel = () => stop()
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+  }
+
+  return (
+    <div
+      data-testid="subtitle-block"
+      data-selected={selected ? 'true' : 'false'}
+      data-start={subtitle.start.toFixed(3)}
+      data-end={subtitle.end.toFixed(3)}
+      onPointerDown={onSelect}
+      style={{
+        left: `${previewLeft * pxPerSecond}px`,
+        width: `${Math.max(previewWidth * pxPerSecond, 8)}px`,
+      }}
+      className={`absolute inset-y-0 flex items-center overflow-hidden rounded-md bg-amber-500/25 px-1 ring-1 transition-colors ${
+        selected ? 'ring-2 ring-amber-300' : 'ring-amber-500/40'
+      }`}
+    >
+      <span className="truncate text-[10px] text-amber-100">
+        {subtitle.text.trim() || '(빈 자막)'}
+      </span>
+
+      {selected && (
+        <>
+          <span
+            data-testid="subtitle-trim-start"
+            onPointerDown={startDrag('start')}
+            className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none select-none bg-amber-300/90"
+          />
+          <span
+            data-testid="subtitle-trim-end"
+            onPointerDown={startDrag('end')}
+            className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none select-none bg-amber-300/90"
+          />
+        </>
+      )}
+    </div>
   )
 }
