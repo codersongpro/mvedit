@@ -9,6 +9,7 @@ import { Preview } from './components/Preview'
 import { SubtitlePanel } from './components/SubtitlePanel'
 import { ProjectList } from './components/ProjectList'
 import { RelinkPanel } from './components/RelinkPanel'
+import { StorageNotice } from './components/StorageNotice'
 import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
 import { useProject } from './lib/project/store'
@@ -175,6 +176,8 @@ export default function App() {
           </span>
         </section>
       )}
+
+      <StorageNotice />
 
       {storageWarning && (
         <p

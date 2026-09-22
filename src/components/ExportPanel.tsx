@@ -168,11 +168,32 @@ export function ExportPanel() {
           내보냅니다.
         </p>
       )}
+      {/*
+        내보내기가 안 되는 브라우저에서는 무엇이 없어서 안 되는지, 어디서
+        열면 되는지, 지금 한 편집을 어떻게 지키는지까지 같이 알린다 (FR-028).
+        "지원하지 않습니다" 한 줄만 두면 사용자는 편집한 것을 그대로 잃는다.
+      */}
       {profile === null && (
-        <p className="rounded-lg bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-300">
-          이 브라우저에서는 영상 내보내기를 지원하지 않습니다. 최신 Chrome, Edge, Safari에서 열어
-          주세요.
-        </p>
+        <div
+          data-testid="export-unsupported"
+          className="flex flex-col gap-2 rounded-lg bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200"
+        >
+          <p className="text-sm font-semibold text-rose-100">
+            이 브라우저에서는 영상 내보내기를 할 수 없습니다
+          </p>
+          <p>
+            영상을 만드는 데 필요한 WebCodecs 기능이 없습니다. 편집한 내용은 그대로 남아 있으니,
+            아래 브라우저에서 같은 주소를 열면 이어서 내보낼 수 있습니다.
+          </p>
+          <ul className="ml-4 list-disc">
+            <li>안드로이드·PC: 크롬, 엣지, 삼성인터넷 최신 버전</li>
+            <li>아이폰·아이패드·맥: 사파리 16.4 이상</li>
+          </ul>
+          <p>
+            지금 화면에서 <strong>‘프로젝트 파일 저장’</strong>을 누르면 편집 내용이 작은 파일로
+            저장됩니다. 다른 브라우저에서 그 파일을 열고 원본을 다시 고르면 됩니다.
+          </p>
+        </div>
       )}
 
       {phase.status !== 'exporting' && profile && (

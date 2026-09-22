@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/inject-sw.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:e2e": "node tests/export.e2e.mjs",
@@ -15,9 +15,11 @@
     "test:preview": "node tests/preview.e2e.mjs",
     "test:subtitle": "node tests/subtitle.e2e.mjs",
     "test:compose": "node tests/compose.e2e.mjs",
-    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:preview && npm run test:subtitle && npm run test:project && npm run test:mobile && npm run test:compose && npm run test:e2e",
+    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:preview && npm run test:subtitle && npm run test:project && npm run test:mobile && npm run test:offline && npm run test:compose && npm run test:e2e",
     "test:project": "node tests/project.e2e.mjs",
-    "test:mobile": "node tests/mobile.e2e.mjs"
+    "test:mobile": "node tests/mobile.e2e.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "test:offline": "node tests/offline.e2e.mjs"
   },
   "dependencies": {
     "mediabunny": "^1.58.1",
