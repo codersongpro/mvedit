@@ -8,14 +8,13 @@
  *
  *   npm run build && npm run test:import
  */
-import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { startPreviewServer } from './server.mjs'
 
-const PORT = Number(process.env.PORT ?? 4184)
-const BASE_URL = `http://127.0.0.1:${PORT}/`
+const { baseUrl: BASE_URL, stop: stopServer } = await startPreviewServer()
 const CLIP = { widthPx: 320, heightPx: 240, durationSec: 3, fps: 30 }
 
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -36,35 +35,16 @@ function check(name, passed, detail = '') {
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
-async function waitForServer(url, attempts = 40) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      if ((await fetch(url)).ok) return
-    } catch {
-      /* 아직 안 떴다 */
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`미리보기 서버가 ${url} 에서 뜨지 않았습니다.`)
-}
-
 /** 1×1 투명 PNG. 이미지 클립 경로만 확인하면 되므로 최소 크기로 쓴다. */
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 )
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  cwd: projectRoot,
-  stdio: 'ignore',
-})
-
 let browser
 let exitCode = 0
 
 try {
-  await waitForServer(BASE_URL)
-
   const { chromium } = await loadPlaywright()
   const bundleSource = await readFile(bundlePath, 'utf8')
   const helpers = await readFile(join(here, 'fixture.js'), 'utf8')
@@ -176,7 +156,7 @@ try {
   exitCode = 1
 } finally {
   await browser?.close()
-  server.kill()
+  stopServer()
 }
 
 const failed = checks.filter((c) => !c.passed)

@@ -11,13 +11,12 @@
  *
  *   npm run build && npm run test:subtitle
  */
-import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { startPreviewServer } from './server.mjs'
 
-const PORT = Number(process.env.PORT ?? 4189)
-const BASE_URL = `http://127.0.0.1:${PORT}/`
+const { baseUrl: BASE_URL, stop: stopServer } = await startPreviewServer()
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const projectRoot = join(here, '..')
@@ -37,28 +36,10 @@ function check(name, passed, detail = '') {
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
-async function waitForServer(url, attempts = 40) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      if ((await fetch(url)).ok) return
-    } catch {
-      /* 아직 안 떴다 */
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`미리보기 서버가 ${url} 에서 뜨지 않았습니다.`)
-}
-
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  cwd: projectRoot,
-  stdio: 'ignore',
-})
-
 let browser
 let exitCode = 0
 
 try {
-  await waitForServer(BASE_URL)
   const { chromium } = await loadPlaywright()
   const bundleSource = await readFile(bundlePath, 'utf8')
   const helpers = await readFile(join(here, 'fixture.js'), 'utf8')
@@ -323,7 +304,7 @@ try {
   exitCode = 1
 } finally {
   await browser?.close()
-  server.kill()
+  stopServer()
 }
 
 const failed = checks.filter((c) => !c.passed)
