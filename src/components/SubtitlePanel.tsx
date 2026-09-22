@@ -4,6 +4,8 @@ import { segmentAt, toSegments } from '../lib/project/playback'
 import { clipRange } from '../lib/project/subtitles'
 import { MAX_SUBTITLE_LENGTH, type Subtitle } from '../lib/project/types'
 import { formatClock } from '../lib/format'
+import { DeleteIcon, ExpandMoreIcon, TextFieldsIcon } from './icons'
+import { Chip, Row, Segmented, TextField, btn } from './m3'
 
 const FONT_SIZES = [
   { value: 0.035, label: '작게' },
@@ -34,6 +36,7 @@ export function SubtitlePanel() {
   const setSubtitleStyle = useProject((state) => state.setSubtitleStyle)
   const setPlayhead = useProject((state) => state.setPlayhead)
   const playhead = useProject((state) => state.playhead)
+  const selectedId = useProject((state) => state.selectedSubtitleId)
 
   const segments = useMemo(() => toSegments(timeline), [timeline])
 
@@ -68,43 +71,53 @@ export function SubtitlePanel() {
           data-testid="add-subtitle"
           disabled={!canAdd}
           onClick={() => addSubtitle()}
-          className="min-h-11 rounded-lg bg-sky-500 px-4 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-600"
+          className={`${btn.filled} h-11 pl-4`}
         >
+          <TextFieldsIcon size={20} />
           현재 위치에 자막 추가
         </button>
-        <span className="text-xs text-slate-500">자막 {rows.length}개</span>
+        <span className="mx-2 m3-label-large text-on-surface-variant">자막 {rows.length}개</span>
       </div>
 
       {rows.length > 0 && (
-        <ul data-testid="subtitle-list" className="flex flex-col gap-2">
-          {rows.map(({ subtitle, timelineStart, hidden }) => (
-            <li
-              key={subtitle.id}
-              data-testid="subtitle-row"
-              data-hidden={hidden ? 'true' : 'false'}
-              className={`flex flex-wrap items-center gap-2 rounded-xl bg-slate-900/60 p-3 ${
-                hidden ? 'opacity-50' : ''
-              }`}
-            >
-              <button
-                type="button"
-                data-testid="subtitle-seek"
-                onClick={() => setPlayhead(timelineStart)}
-                className="shrink-0 rounded bg-slate-800 px-2 py-1 text-xs tabular-nums text-sky-300 hover:bg-slate-700"
+        <ul
+          data-testid="subtitle-list"
+          className="flex flex-col gap-0.5 overflow-hidden rounded-m3-lg"
+        >
+          {rows.map(({ subtitle, timelineStart, hidden }) => {
+            // 입력칸 라벨 뒤 배경은 줄 배경과 같아야 테두리가 자연스럽게 끊긴다.
+            const labelBg =
+              subtitle.id === selectedId ? 'bg-surface-container-high' : 'bg-surface-container'
+            return (
+              <li
+                key={subtitle.id}
+                data-testid="subtitle-row"
+                data-hidden={hidden ? 'true' : 'false'}
+                className={`flex flex-wrap items-center gap-x-3 gap-y-3 px-4 pt-4 pb-3 ${labelBg} ${
+                  hidden ? 'opacity-60' : ''
+                }`}
               >
-                {formatClock(timelineStart)}
-              </button>
-              <input
-                data-testid="subtitle-text"
-                value={subtitle.text}
-                maxLength={MAX_SUBTITLE_LENGTH}
-                placeholder="자막 내용"
-                onChange={(event) => updateSubtitle(subtitle.id, { text: event.target.value })}
-                className="min-w-40 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-400"
-              />
-              <label className="flex items-center gap-1 text-xs text-slate-500">
-                길이
-                <input
+                <button
+                  type="button"
+                  data-testid="subtitle-seek"
+                  onClick={() => setPlayhead(timelineStart)}
+                  className={`${btn.tonal} h-8 px-3 tabular-nums`}
+                >
+                  {formatClock(timelineStart)}
+                </button>
+                <TextField
+                  label="자막 내용"
+                  labelBg={labelBg}
+                  className="min-w-[180px] flex-1"
+                  data-testid="subtitle-text"
+                  value={subtitle.text}
+                  maxLength={MAX_SUBTITLE_LENGTH}
+                  onChange={(event) => updateSubtitle(subtitle.id, { text: event.target.value })}
+                />
+                <TextField
+                  label="길이(초)"
+                  labelBg={labelBg}
+                  className="w-[104px]"
                   data-testid="subtitle-duration"
                   type="number"
                   min={0.2}
@@ -116,49 +129,55 @@ export function SubtitlePanel() {
                       updateSubtitle(subtitle.id, { end: subtitle.start + seconds })
                     }
                   }}
-                  className="w-16 rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-400"
                 />
-                초
-              </label>
-              <button
-                type="button"
-                data-testid="subtitle-remove"
-                aria-label="자막 지우기"
-                onClick={() => removeSubtitle(subtitle.id)}
-                className="min-h-9 shrink-0 rounded-lg bg-slate-800 px-3 text-xs text-rose-300 hover:bg-rose-500/20"
-              >
-                지우기
-              </button>
-              {hidden && (
-                <span className="w-full text-xs text-amber-300/80">
-                  클립을 잘라내 지금은 보이지 않습니다. 되돌리면 다시 나타납니다.
-                </span>
-              )}
-            </li>
-          ))}
+                <button
+                  type="button"
+                  data-testid="subtitle-remove"
+                  aria-label="자막 지우기"
+                  onClick={() => removeSubtitle(subtitle.id)}
+                  title="자막 지우기"
+                  className={`${btn.icon} h-11 w-11`}
+                >
+                  <DeleteIcon size={24} />
+                </button>
+                {hidden && (
+                  <span className="w-full m3-body-small text-on-surface-variant">
+                    클립을 잘라내 지금은 보이지 않습니다. 되돌리면 다시 나타납니다.
+                  </span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
 
-      <details className="rounded-xl bg-slate-900/40 p-3" data-testid="subtitle-style">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-300">
+      <details
+        className="group rounded-m3-lg border border-outline-variant bg-surface-container-low"
+        data-testid="subtitle-style"
+      >
+        <summary className="state-layer flex h-14 cursor-pointer list-none items-center justify-between rounded-m3-lg px-4 m3-title-small text-on-surface [&::-webkit-details-marker]:hidden">
           자막 모양 (전체 적용)
+          <ExpandMoreIcon
+            size={24}
+            className="text-on-surface-variant transition-transform duration-200 ease-m3 group-open:rotate-180"
+          />
         </summary>
 
-        <div className="mt-3 flex flex-col gap-4">
-          <Row label="글자 크기">
+        <div className="flex flex-col gap-4 px-4 pt-1 pb-4">
+          <Row label="글자 크기" width="sm:w-[88px]">
             {FONT_SIZES.map((size) => (
-              <Choice
+              <Chip
                 key={size.value}
                 testId={`font-${size.label}`}
                 active={Math.abs(style.fontScale - size.value) < 0.001}
                 onClick={() => setSubtitleStyle({ fontScale: size.value })}
               >
                 {size.label}
-              </Choice>
+              </Chip>
             ))}
           </Row>
 
-          <Row label="글자색">
+          <Row label="글자색" width="sm:w-[88px]">
             {['#FFFFFF', '#FFE066', '#000000'].map((color) => (
               <button
                 key={color}
@@ -168,27 +187,25 @@ export function SubtitlePanel() {
                 aria-pressed={style.color.toUpperCase() === color}
                 onClick={() => setSubtitleStyle({ color })}
                 style={{ backgroundColor: color }}
-                className={`h-9 w-9 rounded-lg ring-2 ${
-                  style.color.toUpperCase() === color ? 'ring-sky-400' : 'ring-slate-700'
+                className={`h-9 w-9 rounded-[10px] border border-outline-variant ${
+                  style.color.toUpperCase() === color
+                    ? 'outline-2 outline-offset-2 outline-primary'
+                    : ''
                 }`}
               />
             ))}
           </Row>
 
-          <Row label="배경">
-            {BACKGROUNDS.map((background) => (
-              <Choice
-                key={background.value}
-                testId={`bg-${background.value}`}
-                active={style.background === background.value}
-                onClick={() => setSubtitleStyle({ background: background.value })}
-              >
-                {background.label}
-              </Choice>
-            ))}
+          <Row label="배경" width="sm:w-[88px]">
+            <Segmented
+              testIdPrefix="bg"
+              options={BACKGROUNDS.map((background) => ({ ...background }))}
+              value={style.background}
+              onChange={(background) => setSubtitleStyle({ background })}
+            />
           </Row>
 
-          <Row label="세로 위치">
+          <Row label="세로 위치" width="sm:w-[88px]">
             <input
               data-testid="subtitle-position"
               type="range"
@@ -198,55 +215,14 @@ export function SubtitlePanel() {
               onChange={(event) =>
                 setSubtitleStyle({ verticalPosition: Number(event.target.value) / 100 })
               }
-              className="w-40 accent-sky-400"
+              className="h-10 w-48 accent-primary"
             />
-            <span className="text-xs text-slate-500">
+            <span className="m3-body-small text-on-surface-variant">
               아래에서 {Math.round(style.verticalPosition * 100)}%
             </span>
           </Row>
         </div>
       </details>
     </div>
-  )
-}
-
-/**
- * 이름표 + 고르는 것들 한 줄.
- *
- * 좁은 화면에서는 이름표를 위로 올린다. 한 줄에 같이 두면 버튼이 이름표 옆에서
- * 시작했다가 다음 줄은 맨 왼쪽에서 시작해, 줄마다 들쭉날쭉하게 보인다.
- */
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <span className="text-xs text-slate-400 sm:w-20 sm:shrink-0">{label}</span>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
-    </div>
-  )
-}
-
-function Choice({
-  children,
-  active,
-  onClick,
-  testId,
-}: {
-  children: React.ReactNode
-  active: boolean
-  onClick: () => void
-  testId: string
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`min-h-9 rounded-lg px-3 text-xs font-medium transition-colors ${
-        active ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-      }`}
-    >
-      {children}
-    </button>
   )
 }

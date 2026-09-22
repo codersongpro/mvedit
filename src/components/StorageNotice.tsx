@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useProject } from '../lib/project/store'
+import { btn } from './m3'
 
 /** 한 번 닫으면 다시 띄우지 않는다. 같은 말을 매번 하면 읽지 않게 된다. */
 const SEEN_KEY = 'cutcap.ios-storage-notice'
@@ -52,9 +53,9 @@ export function StorageNotice() {
   return (
     <aside
       data-testid="ios-storage-notice"
-      className="flex flex-col gap-2 rounded-xl bg-amber-500/10 p-4 text-xs leading-relaxed text-amber-200 ring-1 ring-amber-500/20"
+      className="flex flex-col gap-2 rounded-m3-md bg-tertiary-container p-4 m3-body-medium text-on-tertiary-container"
     >
-      <p className="text-sm font-semibold text-amber-100">아이폰·아이패드에서 읽어 주세요</p>
+      <p className="m3-title-small">아이폰·아이패드에서 읽어 주세요</p>
       <p>
         사파리는 <strong>7일 넘게 이 사이트를 열지 않으면</strong> 자동 저장된 작업을 지울 수
         있습니다. 오래 두고 쓸 작업이라면 다음 중 하나를 해 두세요.
@@ -73,7 +74,7 @@ export function StorageNotice() {
         type="button"
         data-testid="dismiss-ios-notice"
         onClick={close}
-        className="min-h-10 self-start rounded-lg bg-amber-500/20 px-4 font-semibold text-amber-100"
+        className={`${btn.filled} mt-1 self-start`}
       >
         알겠습니다
       </button>

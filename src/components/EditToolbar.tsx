@@ -1,4 +1,13 @@
 import { useProject } from '../lib/project/store'
+import {
+  ArrowBackIcon,
+  ArrowForwardIcon,
+  ContentCutIcon,
+  DeleteIcon,
+  RedoIcon,
+  UndoIcon,
+} from './icons'
+import { btn } from './m3'
 
 /**
  * PRD 6절의 키보드 단축키 기준. 영상 기본 프레임율을 30fps로 보고
@@ -25,27 +34,41 @@ export function EditToolbar({ nowrap }: { nowrap?: boolean } = {}) {
   const index = timeline.findIndex((item) => item.id === selectedItemId)
   const hasSelection = index !== -1
 
-  const divider = <span className="mx-1 h-5 w-px bg-slate-700" />
+  const divider = <span className="mx-1 h-6 w-px shrink-0 bg-outline-variant" />
 
   const history = (
     <>
-      <ToolButton testId="undo" onClick={undo} disabled={past.length === 0}>
-        되돌리기
-      </ToolButton>
-      <ToolButton testId="redo" onClick={redo} disabled={future.length === 0}>
-        다시 실행
-      </ToolButton>
+      <IconButton testId="undo" onClick={undo} disabled={past.length === 0} label="되돌리기">
+        <UndoIcon size={24} />
+      </IconButton>
+      <IconButton testId="redo" onClick={redo} disabled={future.length === 0} label="다시 실행">
+        <RedoIcon size={24} />
+      </IconButton>
     </>
   )
 
   return (
     <div className={`flex items-center gap-2 ${nowrap ? 'w-max flex-nowrap' : 'flex-wrap'}`}>
-      <ToolButton testId="split" onClick={split} primary>
+      <button
+        type="button"
+        data-testid="split"
+        onClick={split}
+        // 모바일에서 손가락으로 누를 수 있는 최소 크기 (PRD 6절)
+        className={`${btn.filled} h-11 pr-5 pl-4`}
+      >
+        <ContentCutIcon size={20} />
         자르기
-      </ToolButton>
-      <ToolButton testId="delete" onClick={removeSelected} disabled={!hasSelection} danger>
+      </button>
+      <button
+        type="button"
+        data-testid="delete"
+        onClick={removeSelected}
+        disabled={!hasSelection}
+        className={`${btn.outlined} h-11 pr-5 pl-4`}
+      >
+        <DeleteIcon size={20} />
         지우기
-      </ToolButton>
+      </button>
 
       {/* 한 줄로 밀어 보는 모바일 바에서는 되돌리기를 앞에 둔다. 가장 자주
           쓰는데 끝에 있으면 매번 옆으로 밀어 찾아야 한다. */}
@@ -54,8 +77,10 @@ export function EditToolbar({ nowrap }: { nowrap?: boolean } = {}) {
 
       {divider}
 
-      <span className="flex items-center gap-1.5">
-        <span className="text-xs text-slate-400">빈 화면 추가</span>
+      <span className="flex items-center gap-2">
+        <span className="m3-label-large whitespace-nowrap text-on-surface-variant">
+          빈 화면 추가
+        </span>
         <BlankButton
           testId="insert-blank"
           color="#000000"
@@ -72,22 +97,24 @@ export function EditToolbar({ nowrap }: { nowrap?: boolean } = {}) {
 
       {divider}
 
-      <ToolButton
+      <IconButton
         testId="move-back"
         onClick={() => moveSelected(-1)}
         disabled={!hasSelection || index === 0}
-        aria-label="앞으로 옮기기"
+        label="앞으로 옮기기"
+        tonal
       >
-        ←
-      </ToolButton>
-      <ToolButton
+        <ArrowBackIcon size={24} />
+      </IconButton>
+      <IconButton
         testId="move-forward"
         onClick={() => moveSelected(1)}
         disabled={!hasSelection || index === timeline.length - 1}
-        aria-label="뒤로 옮기기"
+        label="뒤로 옮기기"
+        tonal
       >
-        →
-      </ToolButton>
+        <ArrowForwardIcon size={24} />
+      </IconButton>
 
       {!nowrap && divider}
       {!nowrap && history}
@@ -118,42 +145,37 @@ function BlankButton({
       title={label}
       onClick={() => onClick(undefined, color)}
       style={{ backgroundColor: color }}
-      className="h-11 w-11 rounded-lg ring-1 ring-slate-600 transition-transform hover:scale-105"
+      className="state-layer h-11 w-11 shrink-0 rounded-m3-md border border-outline text-on-surface-variant"
     />
   )
 }
 
-function ToolButton({
+/** 되돌리기·옮기기처럼 뜻이 분명한 동작은 아이콘만 둔다. 이름은 aria-label 로 준다. */
+function IconButton({
   children,
   onClick,
   disabled,
   testId,
-  primary,
-  danger,
-  ...rest
+  label,
+  tonal,
 }: {
   children: React.ReactNode
   onClick: () => void
   disabled?: boolean
   testId: string
-  primary?: boolean
-  danger?: boolean
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const tone = primary
-    ? 'bg-sky-500 text-slate-950 hover:bg-sky-400'
-    : danger
-      ? 'bg-slate-800 text-rose-300 hover:bg-rose-500/20'
-      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-
+  label: string
+  tonal?: boolean
+}) {
   return (
     <button
       type="button"
       data-testid={testId}
       onClick={onClick}
       disabled={disabled}
-      // 모바일에서 손가락으로 누를 수 있는 최소 크기 (PRD 6절)
-      className={`min-h-11 min-w-11 rounded-lg px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:bg-slate-800/50 disabled:text-slate-600 ${tone}`}
-      {...rest}
+      aria-label={label}
+      title={label}
+      // 디자인은 40px 이지만 손가락 기준(44px, PRD 6절)을 지킨다.
+      className={`${tonal ? btn.iconTonal : btn.icon} h-11 w-11`}
     >
       {children}
     </button>

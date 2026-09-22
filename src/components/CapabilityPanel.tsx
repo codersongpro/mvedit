@@ -1,28 +1,25 @@
 import type { CapabilityCheck, CheckStatus } from '../lib/capabilities'
 
-const STATUS_STYLE: Record<CheckStatus, { badge: string; label: string; ring: string }> = {
-  ok: { badge: 'bg-emerald-500/15 text-emerald-300', label: '사용 가능', ring: 'ring-emerald-500/20' },
-  warn: { badge: 'bg-amber-500/15 text-amber-300', label: '제한적', ring: 'ring-amber-500/20' },
-  fail: { badge: 'bg-rose-500/15 text-rose-300', label: '불가', ring: 'ring-rose-500/20' },
+const STATUS_STYLE: Record<CheckStatus, { badge: string; label: string }> = {
+  ok: { badge: 'bg-primary-container text-on-primary-container', label: '사용 가능' },
+  warn: { badge: 'bg-tertiary-container text-on-tertiary-container', label: '제한적' },
+  fail: { badge: 'bg-error-container text-on-error-container', label: '불가' },
 }
 
 export function CapabilityPanel({ checks }: { checks: CapabilityCheck[] }) {
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-0.5 overflow-hidden rounded-m3-lg">
       {checks.map((check) => {
         const style = STATUS_STYLE[check.status]
         return (
-          <li
-            key={check.label}
-            className={`rounded-xl bg-slate-900/60 p-4 ring-1 ${style.ring}`}
-          >
+          <li key={check.label} className="bg-surface-container px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-100">{check.label}</h3>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${style.badge}`}>
+              <h3 className="m3-title-small text-on-surface">{check.label}</h3>
+              <span className={`rounded-m3-sm px-2.5 py-0.5 m3-label-medium ${style.badge}`}>
                 {style.label}
               </span>
             </div>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">{check.detail}</p>
+            <p className="mt-1 m3-body-medium text-on-surface-variant">{check.detail}</p>
           </li>
         )
       })}

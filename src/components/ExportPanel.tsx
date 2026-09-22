@@ -11,6 +11,8 @@ import { formatBytes, formatClock } from '../lib/format'
 import { estimateRemainingMs } from '../lib/project/limits'
 import { lowerResolution } from '../lib/media/outputSize'
 import { ExportSettings } from './ExportSettings'
+import { DownloadIcon, UploadIcon } from './icons'
+import { btn, notice } from './m3'
 
 type Phase =
   | { status: 'idle' }
@@ -172,7 +174,7 @@ export function ExportPanel() {
       <ExportSettings />
 
       {profile && profile.id !== MP4_PROFILE.id && (
-        <p className="rounded-lg bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300">
+        <p className={notice.warn}>
           이 브라우저는 MP4(H.264) 인코딩을 지원하지 않아 시험용으로 {profile.label} 형식으로
           내보냅니다.
         </p>
@@ -185,11 +187,9 @@ export function ExportPanel() {
       {profile === null && (
         <div
           data-testid="export-unsupported"
-          className="flex flex-col gap-2 rounded-lg bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200"
+          className="flex flex-col gap-2 rounded-m3-md bg-error-container p-4 m3-body-medium text-on-error-container"
         >
-          <p className="text-sm font-semibold text-rose-100">
-            이 브라우저에서는 영상 내보내기를 할 수 없습니다
-          </p>
+          <p className="m3-title-small">이 브라우저에서는 영상 내보내기를 할 수 없습니다</p>
           <p>
             영상을 만드는 데 필요한 WebCodecs 기능이 없습니다. 편집한 내용은 그대로 남아 있으니,
             아래 브라우저에서 같은 주소를 열면 이어서 내보낼 수 있습니다.
@@ -210,30 +210,31 @@ export function ExportPanel() {
           type="button"
           data-testid="export-button"
           onClick={startExport}
-          className="self-start rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-emerald-400"
+          className={`${btn.filled} h-14 self-start rounded-m3-lg pr-6 pl-4 text-base`}
         >
+          <UploadIcon size={24} />
           영상 내보내기
         </button>
       )}
 
       {phase.status === 'exporting' && (
-        <div className="flex flex-col gap-2">
-          <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+        <div className="flex flex-col gap-2 px-1">
+          <div className="h-1 overflow-hidden rounded-full bg-secondary-container">
             <div
-              className="h-full rounded-full bg-sky-400 transition-[width] duration-200"
+              className="h-full rounded-full bg-primary transition-[width] duration-200"
               style={{ width: `${Math.round(phase.progress * 100)}%` }}
             />
           </div>
           {phase.retrying && (
-            <p data-testid="export-retrying" className="text-xs text-sky-300">
+            <p data-testid="export-retrying" className="m3-body-small text-primary">
               목표 용량을 맞추려고 화질을 낮춰 다시 인코딩하는 중입니다 (1회)
             </p>
           )}
-          <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="flex items-center justify-between m3-body-medium text-on-surface-variant">
             <span data-testid="export-progress">
               {Math.round(phase.progress * 100)}%
               {phase.remainingMs !== null && (
-                <span data-testid="export-remaining" className="ml-2 text-slate-500">
+                <span data-testid="export-remaining" className="ml-2">
                   약 {formatClock(phase.remainingMs / 1000)} 남음
                 </span>
               )}
@@ -242,7 +243,7 @@ export function ExportPanel() {
               type="button"
               data-testid="cancel-export"
               onClick={cancelExport}
-              className="text-rose-300 hover:text-rose-200"
+              className={btn.text}
             >
               취소
             </button>
@@ -254,15 +255,15 @@ export function ExportPanel() {
         <div
           data-testid="export-done"
           data-retry-count={phase.retryCount}
-          className="flex flex-col gap-3 rounded-xl bg-emerald-500/10 p-4 ring-1 ring-emerald-500/20"
+          className="flex flex-col gap-3 rounded-m3-lg bg-primary-container p-4 text-on-primary-container"
         >
-          <p className="text-sm text-emerald-200">
+          <p className="m3-title-small">
             내보내기 완료 — {formatBytes(phase.size)} · {(phase.elapsedMs / 1000).toFixed(1)}초 소요
           </p>
 
           {/* 목표 용량을 못 맞춰도 만든 파일은 그대로 저장할 수 있다 (AC-022). */}
           {phase.targetBytes !== null && phase.size > phase.targetBytes && (
-            <p data-testid="target-missed" className="text-xs leading-relaxed text-amber-300">
+            <p data-testid="target-missed" className={notice.warn}>
               목표 {formatBytes(phase.targetBytes)}를 맞추지 못했습니다(
               {formatBytes(phase.size)}).{' '}
               {lowerResolution(setting.resolution)
@@ -272,7 +273,7 @@ export function ExportPanel() {
             </p>
           )}
           {phase.targetBytes !== null && phase.size <= phase.targetBytes && (
-            <p data-testid="target-met" className="text-xs text-emerald-300/80">
+            <p data-testid="target-met" className="m3-body-small">
               목표 {formatBytes(phase.targetBytes)} 이하로 맞췄습니다
               {phase.retryCount > 0 ? ' (화질을 낮춰 1회 재인코딩)' : ''}.
             </p>
@@ -282,8 +283,9 @@ export function ExportPanel() {
               href={phase.url}
               download={phase.fileName}
               data-testid="download-link"
-              className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+              className={`${btn.filled} pl-4`}
             >
+              <DownloadIcon size={18} />
               영상 저장
             </a>
             {phase.srtUrl && (
@@ -291,8 +293,9 @@ export function ExportPanel() {
                 href={phase.srtUrl}
                 download={phase.srtFileName}
                 data-testid="download-srt"
-                className="rounded-lg bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-700"
+                className={`${btn.outlined} pl-4`}
               >
+                <DownloadIcon size={18} />
                 자막 파일(.srt) 저장
               </a>
             )}
@@ -301,10 +304,7 @@ export function ExportPanel() {
       )}
 
       {phase.status === 'error' && (
-        <p
-          data-testid="export-error"
-          className="rounded-lg bg-rose-500/10 p-3 text-sm leading-relaxed text-rose-300"
-        >
+        <p data-testid="export-error" className={`${notice.error} m3-body-medium`}>
           {phase.message}
         </p>
       )}

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ExpandLessIcon, ExpandMoreIcon } from './icons'
+import { btn } from './m3'
 
 const TIPS = [
   '눈금이나 클립을 눌러 재생 위치를 옮깁니다.',
@@ -30,18 +32,22 @@ export function HelpPanel() {
         data-testid="help-toggle"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="self-start rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-700"
+        className={`${btn.text} self-start pr-2`}
       >
-        사용법 · 단축키 {open ? '닫기' : '보기'}
+        사용법 · 단축키 <span className="sr-only">{open ? '닫기' : '보기'}</span>
+        {open ? <ExpandLessIcon size={20} /> : <ExpandMoreIcon size={20} />}
       </button>
 
       {open && (
-        <div data-testid="help-panel" className="flex flex-col gap-4 rounded-xl bg-slate-900/60 p-4">
+        <div
+          data-testid="help-panel"
+          className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-6 rounded-m3-lg bg-surface-container-low p-4"
+        >
           <div>
-            <h3 className="mb-2 text-xs font-semibold text-slate-300">조작법</h3>
+            <h3 className="mb-2 m3-title-small text-on-surface">조작법</h3>
             <ul className="flex flex-col gap-1">
               {TIPS.map((tip) => (
-                <li key={tip} className="text-xs leading-relaxed text-slate-400">
+                <li key={tip} className="m3-body-medium text-on-surface-variant">
                   · {tip}
                 </li>
               ))}
@@ -49,18 +55,19 @@ export function HelpPanel() {
           </div>
 
           <div>
-            <h3 className="mb-2 text-xs font-semibold text-slate-300">
-              단축키 <span className="font-normal text-slate-500">(키보드가 있을 때)</span>
+            <h3 className="mb-2 m3-title-small text-on-surface">
+              단축키{' '}
+              <span className="m3-body-small text-on-surface-variant">(키보드가 있을 때)</span>
             </h3>
             <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
               {SHORTCUTS.map((shortcut) => (
                 <div key={shortcut.keys} className="col-span-2 grid grid-cols-subgrid items-center">
                   <dt>
-                    <kbd className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-200">
+                    <kbd className="rounded-md bg-surface-container-highest px-2 py-0.5 font-mono m3-label-medium text-on-surface">
                       {shortcut.keys}
                     </kbd>
                   </dt>
-                  <dd className="text-xs text-slate-400">{shortcut.action}</dd>
+                  <dd className="m3-body-medium text-on-surface-variant">{shortcut.action}</dd>
                 </div>
               ))}
             </dl>

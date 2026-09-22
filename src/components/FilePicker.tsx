@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import { AddIcon, UploadIcon } from './icons'
+import { btn } from './m3'
 
 export function FilePicker({
   onSelect,
@@ -43,9 +45,10 @@ export function FilePicker({
           disabled={disabled}
           data-testid="add-more"
           onClick={() => inputRef.current?.click()}
-          className="min-h-11 rounded-lg bg-slate-800 px-4 text-sm font-semibold text-sky-300 disabled:text-slate-500"
+          className={`${btn.tonal} h-11 pl-4`}
         >
-          + 영상·사진 추가
+          <AddIcon size={18} />
+          영상·사진 추가
         </button>
       </div>
     )
@@ -63,20 +66,26 @@ export function FilePicker({
         setDragging(false)
         if (!disabled) handleFiles(event.dataTransfer.files)
       }}
-      className={`rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
-        dragging ? 'border-sky-400 bg-sky-500/10' : 'border-slate-700 bg-slate-900/40'
+      className={`flex flex-col items-center gap-4 rounded-[28px] border-2 border-dashed px-6 py-10 text-center transition-colors duration-100 ease-m3 ${
+        dragging
+          ? 'border-primary bg-primary-container/40'
+          : 'border-outline-variant bg-surface-container-low'
       }`}
     >
       {input}
+      <span className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-primary-container text-on-primary-container">
+        <UploadIcon size={32} />
+      </span>
       <button
         type="button"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        className="rounded-lg bg-sky-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+        className={`${btn.filled} h-14 rounded-m3-lg pr-6 pl-4 text-base`}
       >
+        <AddIcon size={24} />
         영상·사진 추가
       </button>
-      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+      <p className="max-w-md m3-body-small text-on-surface-variant">
         여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다. 프로젝트 파일(.cutcap)도 여기로 열 수
         있습니다.
       </p>

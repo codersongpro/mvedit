@@ -12,14 +12,17 @@ import {
   type TimelineItem,
 } from '../lib/project/types'
 import { formatClock } from '../lib/format'
+import { AddCircleIcon, DoNotDisturbOnIcon } from './icons'
+import { btn } from './m3'
 
 // 1초를 1픽셀로 보면 한 시간짜리 영상도 한눈에 들어오고,
 // 600픽셀이면 30fps 기준 한 프레임이 20픽셀이라 프레임 단위로 집을 수 있다.
 const MIN_PX_PER_SECOND = 1
 const MAX_PX_PER_SECOND = 600
 const DEFAULT_PX_PER_SECOND = 40
-const TRACK_HEIGHT = 72
-const SUBTITLE_LANE_HEIGHT = 30
+// 필름 44px 아래에 파일 이름과 길이 두 줄이 들어간다.
+const TRACK_HEIGHT = 92
+const SUBTITLE_LANE_HEIGHT = 32
 const ZOOM_STEP = 1.6
 
 /** 재생헤드가 가장자리 이만큼 안쪽으로 들어오면 화면을 민다. */
@@ -218,22 +221,22 @@ export function Timeline() {
 
   if (timeline.length === 0) {
     return (
-      <p className="rounded-xl bg-slate-900/40 p-6 text-center text-sm text-slate-500">
+      <p className="rounded-m3-lg border border-outline-variant bg-surface-container-low p-6 text-center m3-body-medium text-on-surface-variant">
         아직 타임라인이 비어 있습니다. 영상이나 사진을 추가해 주세요.
       </p>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between text-xs text-slate-400">
+    <div className="flex flex-col gap-1 rounded-m3-lg border border-outline-variant bg-surface-container-low pt-2 pb-1">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 px-4 m3-label-large text-on-surface-variant">
         <span data-testid="clip-count">클립 {timeline.length}개</span>
         <div className="flex items-center gap-3">
-          <span data-testid="playhead-time" className="tabular-nums text-sky-300">
+          <span data-testid="playhead-time" className="tabular-nums text-primary">
             {formatClock(playhead)}
           </span>
           <span data-testid="timeline-duration" className="tabular-nums">
-            전체 {formatClock(total)}
+            전체 <span className="text-on-surface">{formatClock(total)}</span>
           </span>
           <ZoomControls pxPerSecond={pxPerSecond} onZoom={zoomAround} onFit={zoomToFit} />
         </div>
@@ -249,7 +252,7 @@ export function Timeline() {
           onPointerMove={onPointerMove}
           onPointerUp={endPinch}
           onPointerCancel={endPinch}
-          className="relative flex overflow-x-auto rounded-xl bg-slate-900/60 p-2"
+          className="relative flex overflow-x-auto p-2"
         >
           <div
             ref={contentRef}
@@ -283,7 +286,7 @@ export function Timeline() {
               style={{ height: `${SUBTITLE_LANE_HEIGHT}px` }}
             >
               {placedSubtitles.length === 0 && (
-                <span className="absolute inset-y-0 left-0 flex items-center text-[10px] text-slate-600">
+                <span className="absolute inset-y-0 left-1 flex items-center m3-label-small text-on-surface-variant">
                   자막
                 </span>
               )}
@@ -333,13 +336,8 @@ function ZoomControls({
   onFit: () => void
 }) {
   return (
-    <span className="flex items-center gap-1">
-      <button
-        type="button"
-        data-testid="zoom-fit"
-        onClick={onFit}
-        className="h-7 rounded bg-slate-800 px-2 text-[11px] text-slate-300 hover:bg-slate-700"
-      >
+    <span className="flex items-center">
+      <button type="button" data-testid="zoom-fit" onClick={onFit} className={`${btn.text} mr-1`}>
         맞춤
       </button>
       <button
@@ -348,9 +346,9 @@ function ZoomControls({
         aria-label="타임라인 축소"
         disabled={pxPerSecond <= MIN_PX_PER_SECOND}
         onClick={() => onZoom(1 / ZOOM_STEP)}
-        className="h-7 w-7 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:text-slate-600"
+        className={`${btn.icon} h-10 w-10 text-on-surface`}
       >
-        −
+        <DoNotDisturbOnIcon size={20} />
       </button>
       <button
         type="button"
@@ -358,9 +356,9 @@ function ZoomControls({
         aria-label="타임라인 확대"
         disabled={pxPerSecond >= MAX_PX_PER_SECOND}
         onClick={() => onZoom(ZOOM_STEP)}
-        className="h-7 w-7 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:text-slate-600"
+        className={`${btn.icon} h-10 w-10 text-on-surface`}
       >
-        +
+        <AddCircleIcon size={20} />
       </button>
     </span>
   )
@@ -398,13 +396,13 @@ function Ruler({
       }}
       // 마지막 눈금 라벨이 시간축 오른쪽으로 삐져나오면 스크롤 너비가 늘어나
       // "맞춤" 을 눌러도 가로 스크롤이 남는다. 눈금자 안에서 잘라낸다.
-      className="relative h-6 cursor-pointer touch-none overflow-hidden border-b border-slate-800"
+      className="relative h-6 cursor-pointer touch-none overflow-hidden border-b border-outline-variant"
     >
       {Array.from({ length: marks }, (_, index) => index * step).map((seconds) => (
         <span
           key={seconds}
           style={{ left: `${seconds * pxPerSecond}px` }}
-          className="absolute top-0 h-full border-l border-slate-700 pl-1 text-[10px] text-slate-500"
+          className="absolute top-0 h-full border-l border-outline-variant pl-1 m3-label-small text-on-surface-variant tabular-nums"
         >
           {formatClock(seconds)}
         </span>
@@ -419,9 +417,9 @@ function Playhead({ seconds, pxPerSecond }: { seconds: number; pxPerSecond: numb
       data-testid="playhead"
       data-seconds={seconds.toFixed(3)}
       style={{ left: `${seconds * pxPerSecond}px` }}
-      className="pointer-events-none absolute top-0 bottom-0 w-px bg-sky-400"
+      className="pointer-events-none absolute top-0 bottom-0 z-10 -ml-px w-0.5 bg-primary"
     >
-      <span className="absolute -top-0.5 -left-1 h-2 w-2 rotate-45 bg-sky-400" />
+      <span className="absolute -top-1 -left-[5px] h-3 w-3 rounded-full bg-primary" />
     </div>
   )
 }
@@ -511,11 +509,15 @@ function Clip({
       data-source={source?.fileName ?? ''}
       onPointerDown={(event) => onSelect(event.clientX)}
       style={{ width: `${previewSeconds * pxPerSecond}px` }}
-      className={`relative shrink-0 overflow-hidden rounded-lg bg-slate-800 ring-1 transition-colors ${
-        selected ? 'ring-2 ring-sky-400' : 'ring-slate-700'
+      // 테두리 대신 안쪽 outline 을 쓴다. 테두리는 폭을 차지하지 않더라도
+      // 선택할 때 두께가 바뀌며 내용이 밀린다.
+      className={`relative shrink-0 overflow-hidden rounded-m3-md bg-surface-container-high transition-colors duration-100 ease-m3 ${
+        selected
+          ? 'outline-2 -outline-offset-2 outline-primary'
+          : 'outline -outline-offset-1 outline-outline-variant'
       }`}
     >
-      <div className="relative h-11 bg-slate-950">
+      <div className="relative h-11 bg-black">
         {source?.thumbnailUrl ? (
           // 썸네일을 늘리지 않고 원본 비율 그대로 가로로 반복한다.
           // 클립이 길수록 장면이 여러 번 보여 필름을 보는 느낌이 나고,
@@ -535,18 +537,20 @@ function Clip({
         ) : (
           <div className="h-full w-full" style={{ backgroundColor: item.color }} />
         )}
-        <span className="absolute top-0.5 left-0.5 rounded bg-slate-950/80 px-1 text-[10px] text-slate-300">
+        <span className="absolute top-1 left-1 rounded-md bg-black/60 px-1.5 m3-label-small text-white">
           {index + 1}
         </span>
         {item.type === 'image' && (
-          <span className="absolute top-0.5 right-0.5 rounded bg-slate-950/80 px-1 text-[10px] text-sky-300">
+          <span className="absolute top-1 right-1 rounded-md bg-tertiary-container px-1.5 m3-label-small text-on-tertiary-container">
             사진
           </span>
         )}
       </div>
-      <figcaption className="overflow-hidden px-1 py-0.5">
-        <p className="truncate text-[10px] text-slate-400">{source?.fileName ?? '빈 화면'}</p>
-        <p className="text-[10px] tabular-nums text-slate-500">{formatClock(previewSeconds)}</p>
+      <figcaption className="overflow-hidden px-2 py-1">
+        <p className="truncate m3-label-medium text-on-surface">{source?.fileName ?? '빈 화면'}</p>
+        <p className="m3-label-small tabular-nums text-on-surface-variant">
+          {formatClock(previewSeconds)}
+        </p>
       </figcaption>
 
       {selected && (
@@ -572,10 +576,12 @@ function TrimHandle({
       onPointerDown={onPointerDown}
       // 손가락으로 집으려면 최소 폭이 필요하다. 클립이 아무리 짧아도
       // 손잡이는 줄이지 않는다.
-      className={`absolute top-0 bottom-0 w-3 cursor-ew-resize touch-none select-none bg-sky-400/80 ${
+      className={`absolute top-0 bottom-0 flex w-3 cursor-ew-resize touch-none items-center justify-center bg-primary select-none ${
         side === 'start' ? 'left-0' : 'right-0'
       }`}
-    />
+    >
+      <span className="h-5 w-0.5 rounded-full bg-on-primary" />
+    </span>
   )
 }
 
@@ -657,25 +663,23 @@ function SubtitleBlock({
         left: `${previewLeft * pxPerSecond}px`,
         width: `${Math.max(previewWidth * pxPerSecond, 8)}px`,
       }}
-      className={`absolute inset-y-0 flex items-center overflow-hidden rounded-md bg-amber-500/25 px-1 ring-1 transition-colors ${
-        selected ? 'ring-2 ring-amber-300' : 'ring-amber-500/40'
+      className={`absolute inset-y-0.5 flex items-center overflow-hidden rounded-m3-sm bg-secondary-container px-2 text-on-secondary-container transition-colors duration-100 ease-m3 ${
+        selected ? 'outline-2 -outline-offset-2 outline-secondary' : ''
       }`}
     >
-      <span className="truncate text-[10px] text-amber-100">
-        {subtitle.text.trim() || '(빈 자막)'}
-      </span>
+      <span className="truncate m3-label-small">{subtitle.text.trim() || '(빈 자막)'}</span>
 
       {selected && (
         <>
           <span
             data-testid="subtitle-trim-start"
             onPointerDown={startDrag('start')}
-            className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none select-none bg-amber-300/90"
+            className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none bg-secondary select-none"
           />
           <span
             data-testid="subtitle-trim-end"
             onPointerDown={startDrag('end')}
-            className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none select-none bg-amber-300/90"
+            className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none bg-secondary select-none"
           />
         </>
       )}

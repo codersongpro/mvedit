@@ -8,15 +8,27 @@ import {
   fitResolution,
   floorFileSize,
 } from '../lib/media/outputSize'
-import { timelineDuration, type AspectRatio, type QualityLevel } from '../lib/project/types'
+import {
+  timelineDuration,
+  type AspectRatio,
+  type FitMode,
+  type QualityLevel,
+} from '../lib/project/types'
 import { exportWork, heavyExportNotice } from '../lib/project/limits'
 import { formatBytes } from '../lib/format'
+import { Chip, Row, Segmented, TextField, notice } from './m3'
 
 const ASPECTS: Array<{ value: AspectRatio; label: string; hint: string }> = [
   { value: 'source', label: '원본 그대로', hint: '' },
   { value: '16:9', label: '16:9', hint: '유튜브·PC' },
   { value: '9:16', label: '9:16', hint: '릴스·쇼츠' },
   { value: '1:1', label: '1:1', hint: '정사각' },
+]
+
+const FITS: Array<{ value: FitMode; label: string }> = [
+  { value: 'blur', label: '흐린 배경 채우기' },
+  { value: 'contain', label: '여백 채우기' },
+  { value: 'cover', label: '잘라 채우기' },
 ]
 
 const QUALITIES: Array<{ value: QualityLevel; label: string }> = [
@@ -80,46 +92,31 @@ export function ExportSettings() {
   return (
     <div
       data-testid="export-settings"
-      className="flex flex-col gap-4 rounded-xl bg-slate-900/60 p-4"
+      className="flex flex-col gap-5 rounded-m3-xl bg-surface-container p-5"
     >
       <Row label="화면비">
         {ASPECTS.map((aspect) => (
-          <Choice
+          <Chip
             key={aspect.value}
             testId={`aspect-${aspect.value}`}
             active={setting.aspectRatio === aspect.value}
             onClick={() => setSetting({ aspectRatio: aspect.value })}
           >
             {aspect.label}
-            {aspect.hint && <span className="ml-1 text-[10px] opacity-70">{aspect.hint}</span>}
-          </Choice>
+            {aspect.hint && <span className="-ml-1">{aspect.hint}</span>}
+          </Chip>
         ))}
       </Row>
 
       {fitMatters && (
         <Row label="맞추는 방법">
-          <Choice
-            testId="fit-blur"
-            active={setting.fitMode === 'blur'}
-            onClick={() => setSetting({ fitMode: 'blur' })}
-          >
-            흐린 배경 채우기
-          </Choice>
-          <Choice
-            testId="fit-contain"
-            active={setting.fitMode === 'contain'}
-            onClick={() => setSetting({ fitMode: 'contain' })}
-          >
-            여백 채우기
-          </Choice>
-          <Choice
-            testId="fit-cover"
-            active={setting.fitMode === 'cover'}
-            onClick={() => setSetting({ fitMode: 'cover' })}
-          >
-            잘라 채우기
-          </Choice>
-          <span className="text-[11px] text-slate-500">
+          <Segmented
+            testIdPrefix="fit"
+            options={FITS}
+            value={setting.fitMode}
+            onChange={(fitMode) => setSetting({ fitMode })}
+          />
+          <span className="m3-body-small text-on-surface-variant">
             {setting.fitMode === 'blur'
               ? '잘리지 않고, 남는 자리는 같은 화면을 흐리게 키워 채웁니다.'
               : setting.fitMode === 'contain'
@@ -130,80 +127,75 @@ export function ExportSettings() {
       )}
 
       <Row label="해상도">
-        {RESOLUTIONS.map((resolution) => (
-          <Choice
-            key={resolution}
-            testId={`resolution-${resolution}`}
-            active={setting.resolution === resolution}
-            onClick={() => setSetting({ resolution })}
-          >
-            {resolution}p
-          </Choice>
-        ))}
+        <Segmented
+          testIdPrefix="resolution"
+          options={RESOLUTIONS.map((resolution) => ({
+            value: resolution,
+            label: `${resolution}p`,
+          }))}
+          value={setting.resolution}
+          onChange={(resolution) => setSetting({ resolution })}
+        />
       </Row>
 
       <Row label="화질">
-        {QUALITIES.map((quality) => (
-          <Choice
-            key={quality.value}
-            testId={`quality-${quality.value}`}
-            active={setting.quality === quality.value}
-            onClick={() => setSetting({ quality: quality.value })}
-          >
-            {quality.label}
-          </Choice>
-        ))}
+        <Segmented
+          testIdPrefix="quality"
+          options={QUALITIES}
+          value={setting.quality}
+          onChange={(quality) => setSetting({ quality })}
+        />
       </Row>
 
       <Row label="목표 용량">
-        <Choice
+        <Chip
           testId="target-off"
           active={setting.targetSizeMb === null}
           onClick={() => setSetting({ targetSizeMb: null })}
         >
           제한 없음
-        </Choice>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="number"
-            inputMode="decimal"
-            min={0.1}
-            step={0.1}
-            data-testid="target-size"
-            value={setting.targetSizeMb ?? ''}
-            placeholder="예: 20"
-            onChange={(event) => {
-              const value = Number(event.target.value)
-              setSetting({
-                targetSizeMb: event.target.value === '' || value <= 0 ? null : value,
-              })
-            }}
-            className="h-10 w-24 rounded-lg bg-slate-800 px-3 text-xs text-slate-100 tabular-nums"
-          />
-          <span className="text-xs text-slate-400">MB 이하</span>
-        </label>
+        </Chip>
+        <TextField
+          label="목표 용량"
+          labelBg="bg-surface-container"
+          suffix="MB"
+          className="w-36"
+          type="number"
+          inputMode="decimal"
+          min={0.1}
+          step={0.1}
+          data-testid="target-size"
+          value={setting.targetSizeMb ?? ''}
+          placeholder="예: 20"
+          onChange={(event) => {
+            const value = Number(event.target.value)
+            setSetting({
+              targetSizeMb: event.target.value === '' || value <= 0 ? null : value,
+            })
+          }}
+        />
         {setting.targetSizeMb !== null && (
-          <span className="text-[11px] text-slate-500">
+          <span className="m3-body-small text-on-surface-variant">
             용량에 맞춰 화질을 자동으로 낮춥니다. 소리는 그대로 둡니다.
           </span>
         )}
       </Row>
 
       {tooSmallTarget && (
-        <p data-testid="target-too-small" className="text-xs leading-relaxed text-amber-300/80">
+        <p data-testid="target-too-small" className={notice.warn}>
           {duration.toFixed(0)}초 영상은 최소 화질로도 약 {formatBytes(floor)} 입니다. 목표를
           늘리거나 영상을 더 짧게 잘라 주세요.
         </p>
       )}
 
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-3">
-        <span data-testid="output-size" className="text-sm text-slate-200 tabular-nums">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-outline-variant pt-4">
+        <span data-testid="output-size" className="m3-title-medium tabular-nums text-on-surface">
           {size.width}×{size.height}
         </span>
-        <span data-testid="estimated-size" className="text-sm text-sky-300 tabular-nums">
+        <span data-testid="estimated-size" className="m3-title-medium tabular-nums text-primary">
           예상 용량 {formatBytes(estimated)}
         </span>
-        <span className="text-[11px] text-slate-500">
+        <span className="m3-body-small text-on-surface-variant">
           {setting.targetSizeMb === null
             ? '대략치입니다. 단순한 장면은 훨씬 작게 나옵니다'
             : '목표를 넘으면 화질을 낮춰 한 번 다시 인코딩합니다'}
@@ -211,58 +203,17 @@ export function ExportSettings() {
       </div>
 
       {heavy && (
-        <p data-testid="heavy-export-notice" className="text-xs leading-relaxed text-amber-300/80">
+        <p data-testid="heavy-export-notice" className={notice.warn}>
           {heavy}
         </p>
       )}
 
       {upscaling && (
-        <p data-testid="upscale-warning" className="text-xs leading-relaxed text-amber-300/80">
+        <p data-testid="upscale-warning" className={notice.warn}>
           원본({sourceSize.height}p)보다 크게 내보내도 화질은 좋아지지 않고 용량만 커집니다.{' '}
           {fitResolution(sourceSize.height)}p를 권합니다.
         </p>
       )}
     </div>
-  )
-}
-
-/**
- * 이름표 + 고르는 것들 한 줄.
- *
- * 좁은 화면에서는 이름표를 위로 올린다. 한 줄에 같이 두면 버튼이 이름표 옆에서
- * 시작했다가 다음 줄은 맨 왼쪽에서 시작해, 줄마다 들쭉날쭉하게 보인다.
- */
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <span className="text-xs text-slate-400 sm:w-24 sm:shrink-0">{label}</span>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
-    </div>
-  )
-}
-
-function Choice({
-  children,
-  active,
-  onClick,
-  testId,
-}: {
-  children: React.ReactNode
-  active: boolean
-  onClick: () => void
-  testId: string
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`min-h-10 rounded-lg px-3 text-xs font-medium transition-colors ${
-        active ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-      }`}
-    >
-      {children}
-    </button>
   )
 }

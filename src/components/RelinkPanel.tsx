@@ -5,6 +5,8 @@ import { findStoredMedia } from '../lib/project/storage'
 import { persistSources } from '../lib/project/persist'
 import type { MediaSource } from '../lib/project/types'
 import { formatBytes, formatClock } from '../lib/format'
+import { CheckIcon } from './icons'
+import { btn } from './m3'
 
 /** 고른 파일이 저장할 때와 얼마나 달라도 넘어갈지. 인코딩 차이 정도는 봐준다. */
 const DURATION_TOLERANCE = 0.5
@@ -145,13 +147,11 @@ export function RelinkPanel() {
   return (
     <section
       data-testid="relink-panel"
-      className="flex flex-col gap-3 rounded-xl bg-slate-900/60 p-4 ring-1 ring-sky-500/20"
+      className="flex flex-col gap-3 rounded-m3-lg border border-primary bg-surface-container p-4"
     >
       <div>
-        <h2 className="text-sm font-semibold text-slate-100">
-          프로젝트 파일 열기 — {project.name}
-        </h2>
-        <p className="mt-1 text-xs leading-relaxed text-slate-400">
+        <h2 className="m3-title-medium text-on-surface">프로젝트 파일 열기 — {project.name}</h2>
+        <p className="mt-1 m3-body-medium text-on-surface-variant">
           프로젝트 파일에는 영상이 들어 있지 않습니다. 아래 원본 파일을 골라 주세요.
         </p>
       </div>
@@ -162,13 +162,15 @@ export function RelinkPanel() {
             key={source.id}
             data-testid="relink-source"
             data-resolved={resolved[source.id] ? 'yes' : 'no'}
-            className="flex items-center gap-2 text-xs"
+            className="flex items-center gap-2 m3-body-medium"
           >
-            <span className={resolved[source.id] ? 'text-emerald-400' : 'text-slate-600'}>
-              {resolved[source.id] ? '●' : '○'}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-slate-200">{source.fileName}</span>
-            <span className="shrink-0 text-slate-500 tabular-nums">
+            {resolved[source.id] ? (
+              <CheckIcon size={18} className="text-primary" />
+            ) : (
+              <span className="mx-[3px] h-3 w-3 shrink-0 rounded-full border-2 border-outline" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-on-surface">{source.fileName}</span>
+            <span className="shrink-0 m3-body-small text-on-surface-variant tabular-nums">
               {formatBytes(source.fileSize)}
               {source.durationSeconds !== null && ` · ${formatClock(source.durationSeconds)}`}
             </span>
@@ -177,7 +179,10 @@ export function RelinkPanel() {
       </ul>
 
       {notes.length > 0 && (
-        <p data-testid="relink-note" className="text-xs leading-relaxed text-amber-300/90">
+        <p
+          data-testid="relink-note"
+          className="rounded-m3-md bg-tertiary-container p-3 m3-body-small text-on-tertiary-container"
+        >
           {notes.join(' ')}
         </p>
       )}
@@ -202,7 +207,7 @@ export function RelinkPanel() {
             data-testid="relink-pick"
             disabled={busy}
             onClick={() => inputRef.current?.click()}
-            className="min-h-10 rounded-lg bg-sky-500 px-4 text-xs font-semibold text-slate-950 disabled:opacity-50"
+            className={btn.filled}
           >
             원본 파일 고르기 ({missing.length}개 필요)
           </button>
@@ -213,7 +218,7 @@ export function RelinkPanel() {
             data-testid="relink-open"
             disabled={busy}
             onClick={() => void open(false)}
-            className="min-h-10 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-slate-950 disabled:opacity-50"
+            className={btn.filled}
           >
             불러오기
           </button>
@@ -224,7 +229,7 @@ export function RelinkPanel() {
             data-testid="relink-open-partial"
             disabled={busy}
             onClick={() => void open(true)}
-            className="min-h-10 rounded-lg bg-slate-800 px-4 text-xs text-slate-300 disabled:opacity-50"
+            className={btn.tonal}
           >
             없는 클립 빼고 열기
           </button>
@@ -234,7 +239,7 @@ export function RelinkPanel() {
           data-testid="relink-cancel"
           disabled={busy}
           onClick={() => setPending(null)}
-          className="min-h-10 rounded-lg bg-slate-800 px-4 text-xs text-slate-400 disabled:opacity-50"
+          className={btn.text}
         >
           취소
         </button>

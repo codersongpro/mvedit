@@ -7,6 +7,8 @@ import {
   renameProject,
   type ProjectSummary,
 } from '../lib/project/storage'
+import { DeleteIcon } from './icons'
+import { btn, sectionTitle } from './m3'
 
 /** "3분 전"처럼 읽기 쉬운 시각. 어제 작업인지 방금인지만 알면 충분하다. */
 function timeAgo(timestamp: number): string {
@@ -73,26 +75,26 @@ export function ProjectList() {
 
   return (
     <section data-testid="project-list" className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold text-slate-300">이어서 작업하기</h2>
-      <ul className="flex flex-col gap-2">
+      <h2 className={sectionTitle}>이어서 작업하기</h2>
+      <ul className="flex flex-col gap-0.5 overflow-hidden rounded-m3-lg">
         {projects.map((project) => (
           <li
             key={project.id}
             data-testid="project-item"
             data-project-name={project.name}
-            className="flex items-center gap-3 rounded-xl bg-slate-900/60 p-3"
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-surface-container px-4 py-3"
           >
             {project.thumbnailUrl ? (
               <img
                 src={project.thumbnailUrl}
                 alt=""
-                className="h-10 w-16 shrink-0 rounded-md object-cover"
+                className="h-10 w-16 shrink-0 rounded-m3-sm object-cover"
               />
             ) : (
-              <div className="h-10 w-16 shrink-0 rounded-md bg-slate-800" />
+              <div className="h-10 w-16 shrink-0 rounded-m3-sm bg-surface-container-highest" />
             )}
 
-            <div className="min-w-0 flex-1">
+            <div className="min-w-[140px] flex-1">
               {renamingId === project.id ? (
                 <input
                   autoFocus
@@ -104,23 +106,23 @@ export function ProjectList() {
                     if (event.key === 'Enter') void commitRename(project.id)
                     if (event.key === 'Escape') setRenamingId(null)
                   }}
-                  className="h-9 w-full rounded-lg bg-slate-800 px-2 text-sm text-slate-100"
+                  className="h-10 w-full rounded-m3-xs border-2 border-primary bg-transparent px-3 m3-body-large text-on-surface outline-none"
                 />
               ) : (
-                <p className="truncate text-sm font-medium text-slate-100">{project.name}</p>
+                <p className="truncate m3-body-large text-on-surface">{project.name}</p>
               )}
-              <p className="text-[11px] text-slate-500">
+              <p className="m3-body-small text-on-surface-variant">
                 클립 {project.clipCount}개 · {timeAgo(project.updatedAt)}
               </p>
             </div>
 
-            <div className="flex shrink-0 gap-1">
+            <div className="ml-auto flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 data-testid="project-open"
                 disabled={busy}
                 onClick={() => void open(project.id)}
-                className="min-h-9 rounded-lg bg-sky-500 px-3 text-xs font-semibold text-slate-950 disabled:opacity-50"
+                className={`${btn.filled} px-4`}
               >
                 열기
               </button>
@@ -132,7 +134,7 @@ export function ProjectList() {
                   setRenamingId(project.id)
                   setDraftName(project.name)
                 }}
-                className="min-h-9 rounded-lg bg-slate-800 px-3 text-xs text-slate-300 disabled:opacity-50"
+                className={btn.text}
               >
                 이름 바꾸기
               </button>
@@ -141,9 +143,11 @@ export function ProjectList() {
                 data-testid="project-delete"
                 disabled={busy}
                 onClick={() => void remove(project.id)}
-                className="min-h-9 rounded-lg bg-slate-800 px-3 text-xs text-rose-300 disabled:opacity-50"
+                aria-label="지우기"
+                title="지우기"
+                className={`${btn.icon} h-10 w-10`}
               >
-                지우기
+                <DeleteIcon size={20} />
               </button>
             </div>
           </li>

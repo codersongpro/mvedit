@@ -7,6 +7,7 @@ import { timelineDuration } from '../lib/project/types'
 import { computeOutputSize } from '../lib/media/outputSize'
 import { useIsMobile } from '../lib/useIsMobile'
 import { formatClock } from '../lib/format'
+import { PauseIcon, PlayArrowIcon } from './icons'
 
 /** 영상 시각이 이보다 어긋나면 맞춰 준다. 매 프레임 맞추면 재생이 끊긴다. */
 const SYNC_TOLERANCE = 0.25
@@ -236,7 +237,14 @@ export function Preview() {
   const kind = current?.item.type ?? 'none'
 
   return (
-    <div className="flex flex-col gap-2">
+    // 모바일에서는 미리보기가 위에 붙어 있어 패널 여백만큼 편집할 자리가 준다.
+    <div
+      className={
+        mobile
+          ? 'flex flex-col gap-2'
+          : 'flex flex-col gap-3 rounded-m3-xl bg-surface-container p-4'
+      }
+    >
       <div
         data-testid="preview"
         data-active-kind={kind}
@@ -251,7 +259,7 @@ export function Preview() {
           // 타임라인과 도구 바가 같이 보여야 편집을 한 손으로 이어갈 수 있다.
           maxWidth: `calc(${mobile ? '38dvh' : '70vh'} * ${outputSize.width / outputSize.height})`,
         }}
-        className="relative mx-auto w-full overflow-hidden rounded-xl bg-black"
+        className="relative mx-auto w-full overflow-hidden rounded-m3-lg bg-black"
       >
         {blurred && (
           <canvas
@@ -304,19 +312,21 @@ export function Preview() {
         {currentSubtitle && <SubtitleOverlay text={currentSubtitle.text} style={subtitleStyle} />}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         <button
           type="button"
           data-testid="play-toggle"
           aria-label={playing ? '정지' : '재생'}
           onClick={togglePlay}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500 text-slate-950 transition-colors hover:bg-sky-400"
+          className={`state-layer flex shrink-0 items-center justify-center rounded-full bg-primary text-on-primary ${
+            mobile ? 'h-12 w-12' : 'h-14 w-14'
+          }`}
         >
-          {playing ? '❚❚' : '▶'}
+          {playing ? <PauseIcon size={28} /> : <PlayArrowIcon size={28} />}
         </button>
-        <span className="text-sm tabular-nums text-slate-300">
-          {formatClock(playhead)} <span className="text-slate-600">/</span>{' '}
-          <span className="text-slate-500">{formatClock(total)}</span>
+        <span className="m3-title-medium tabular-nums text-on-surface">
+          {formatClock(playhead)}{' '}
+          <span className="m3-body-medium text-on-surface-variant">/ {formatClock(total)}</span>
         </span>
       </div>
     </div>

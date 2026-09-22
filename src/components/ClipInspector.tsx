@@ -1,6 +1,8 @@
 import { findSource, useProject } from '../lib/project/store'
 import { itemDuration } from '../lib/project/types'
 import { formatClock } from '../lib/format'
+import { MicIcon, MicOffIcon } from './icons'
+import { Chip, TextField } from './m3'
 
 const BLANK_COLORS = [
   { value: '#000000', label: '검정' },
@@ -28,7 +30,7 @@ export function ClipInspector() {
     return (
       <p
         data-testid="inspector-empty"
-        className="rounded-xl bg-slate-900/40 p-4 text-sm text-slate-500"
+        className="rounded-m3-lg border border-outline-variant bg-surface-container-low p-4 m3-body-medium text-on-surface-variant"
       >
         클립을 고르면 길이와 소리를 조절할 수 있습니다.
       </p>
@@ -37,44 +39,41 @@ export function ClipInspector() {
 
   const source = findSource(sources, item.sourceId)
   const seconds = itemDuration(item)
-  const label =
-    item.type === 'blank' ? '빈 화면' : item.type === 'image' ? '사진' : '영상'
+  const label = item.type === 'blank' ? '빈 화면' : item.type === 'image' ? '사진' : '영상'
 
   return (
     <div
       data-testid="inspector"
       data-inspector-type={item.type}
-      className="flex flex-col gap-4 rounded-xl bg-slate-900/60 p-4"
+      className="flex flex-col gap-4 rounded-m3-lg bg-surface-container p-4"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="truncate text-sm font-semibold text-slate-200">
+        <h3 className="truncate m3-title-small text-on-surface">
           {label}
           {source ? ` · ${source.fileName}` : ''}
         </h3>
-        <span data-testid="inspector-duration" className="shrink-0 text-xs tabular-nums text-slate-400">
+        <span
+          data-testid="inspector-duration"
+          className="shrink-0 m3-label-medium tabular-nums text-on-surface-variant"
+        >
           {formatClock(seconds)}
         </span>
       </div>
 
       {item.type === 'video' ? (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label htmlFor="clip-volume" className="text-xs text-slate-400">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="clip-volume" className="m3-body-medium text-on-surface-variant">
               소리 {Math.round(item.volume * 100)}%
             </label>
-            <button
-              type="button"
-              data-testid="toggle-mute"
-              aria-pressed={item.muted}
+            <Chip
+              testId="toggle-mute"
+              active={item.muted}
               onClick={() => setAudio(item.id, { muted: !item.muted })}
-              className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition-colors ${
-                item.muted
-                  ? 'bg-rose-500/20 text-rose-300'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
+              icon={item.muted ? <MicOffIcon size={18} /> : <MicIcon size={18} />}
             >
               {item.muted ? '음소거 해제' : '음소거'}
-            </button>
+            </Chip>
           </div>
           <input
             id="clip-volume"
@@ -86,18 +85,20 @@ export function ClipInspector() {
             value={Math.round(item.volume * 100)}
             disabled={item.muted}
             onChange={(event) => setAudio(item.id, { volume: Number(event.target.value) / 100 })}
-            className="w-full accent-sky-400 disabled:opacity-40"
+            className="h-10 w-full accent-primary disabled:opacity-38"
           />
           {!source?.hasAudio && (
-            <p className="text-xs text-amber-300/80">이 영상에는 소리가 들어 있지 않습니다.</p>
+            <p className="m3-body-small text-on-surface-variant">
+              이 영상에는 소리가 들어 있지 않습니다.
+            </p>
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <label htmlFor="clip-duration" className="text-xs text-slate-400">
-            표시 시간 (초)
-          </label>
-          <input
+        <div className="pt-1">
+          <TextField
+            label="표시 시간 (초)"
+            labelBg="bg-surface-container"
+            className="w-40"
             id="clip-duration"
             data-testid="duration-input"
             type="number"
@@ -108,14 +109,13 @@ export function ClipInspector() {
               const value = Number(event.target.value)
               if (Number.isFinite(value)) setDuration(item.id, value)
             }}
-            className="w-28 rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-400"
           />
         </div>
       )}
 
       {item.type === 'blank' && (
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-slate-400">배경색</span>
+          <span className="m3-body-medium text-on-surface-variant">배경색</span>
           <div className="flex flex-wrap gap-2">
             {BLANK_COLORS.map((color) => (
               <button
@@ -126,10 +126,10 @@ export function ClipInspector() {
                 aria-pressed={item.color.toUpperCase() === color.value}
                 onClick={() => setColor(item.id, color.value)}
                 style={{ backgroundColor: color.value }}
-                className={`h-9 w-9 rounded-lg ring-2 transition-transform ${
+                className={`h-9 w-9 rounded-[10px] border border-outline-variant ${
                   item.color.toUpperCase() === color.value
-                    ? 'scale-110 ring-sky-400'
-                    : 'ring-slate-700'
+                    ? 'outline-2 outline-offset-2 outline-primary'
+                    : ''
                 }`}
               />
             ))}
