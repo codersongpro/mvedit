@@ -14,6 +14,7 @@ import {
   MIN_SUBTITLE_SECONDS,
   timelineDuration,
 } from './types'
+import type { ProjectFile } from './file'
 import { fitResolution } from '../media/outputSize'
 import { segmentAt, sourceTimeAt, toSegments } from './playback'
 import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
@@ -42,6 +43,8 @@ interface ProjectState {
   projectName: string
   /** 저장공간이 부족할 때의 안내. 편집은 계속할 수 있다 (FR-026). */
   storageWarning: string | null
+  /** `.cutcap` 을 열었는데 원본을 다시 골라야 하는 상태 (FR-025) */
+  pendingRelink: PendingRelink | null
 
   selectedItemId: string | null
   selectedSubtitleId: string | null
@@ -63,6 +66,7 @@ interface ProjectState {
 
   setProjectName: (name: string) => void
   setStorageWarning: (message: string | null) => void
+  setPendingRelink: (value: PendingRelink | null) => void
   /** 저장해 둔 프로젝트를 통째로 되살린다. 되돌리기 기록은 새로 시작한다. */
   restore: (payload: RestorePayload) => void
 
@@ -93,6 +97,15 @@ interface ProjectState {
   reset: () => void
 }
 
+/** 원본을 다시 연결하는 중인 프로젝트 파일 (FR-025). */
+export interface PendingRelink {
+  project: ProjectFile
+  /** 이미 찾은 원본. 원본 id → 파일 */
+  resolved: Record<string, File>
+  /** 고른 파일이 저장할 때와 달라 보인다는 등의 안내 */
+  notes: string[]
+}
+
 export interface RestorePayload {
   projectId: string
   projectName: string
@@ -113,6 +126,7 @@ const EMPTY = {
   projectId: null as string | null,
   projectName: '새 프로젝트',
   storageWarning: null as string | null,
+  pendingRelink: null as PendingRelink | null,
   sources: [] as MediaSource[],
   timeline: [] as TimelineItem[],
   subtitles: [] as Subtitle[],
@@ -210,6 +224,7 @@ export const useProject = create<ProjectState>((set, get) => {
 
     setProjectName: (name) => set({ projectName: name }),
     setStorageWarning: (message) => set({ storageWarning: message }),
+    setPendingRelink: (value) => set({ pendingRelink: value }),
 
     restore: (payload) =>
       set({

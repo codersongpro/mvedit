@@ -58,7 +58,8 @@ export function useAutosave(): void {
         useProject
           .getState()
           .setStorageWarning(
-            '편집 내용을 저장하지 못했습니다. 저장공간이 부족할 수 있으니 지금 영상을 내보내 두세요.',
+            '편집 내용을 저장하지 못했습니다. 저장공간이 부족할 수 있으니 ' +
+              "'프로젝트 파일 저장'으로 지금 상태를 빼 두세요.",
           )
       } finally {
         saving = false
@@ -103,7 +104,8 @@ export async function persistSources(projectId: string, sources: MediaSource[]):
       .getState()
       .setStorageWarning(
         `저장공간이 부족해 이 영상(${formatBytes(total)})을 자동 저장하지 않았습니다. ` +
-          '지금 편집과 내보내기는 그대로 할 수 있지만, 창을 닫으면 이어서 작업할 수 없습니다.',
+          '편집과 영상 내보내기는 그대로 되지만, 창을 닫으면 이어서 작업할 수 없습니다. ' +
+          "'프로젝트 파일 저장'으로 편집 내용을 빼 두세요.",
       )
     return
   }

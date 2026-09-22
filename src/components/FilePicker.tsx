@@ -34,7 +34,7 @@ export function FilePicker({
       <input
         ref={inputRef}
         type="file"
-        accept="video/*,image/*"
+        accept="video/*,image/*,.cutcap"
         multiple
         className="sr-only"
         data-testid="file-input"
@@ -53,7 +53,8 @@ export function FilePicker({
         영상·사진 추가
       </button>
       <p className="mt-3 text-xs leading-relaxed text-slate-500">
-        여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다.
+        여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다. 프로젝트 파일(.cutcap)도 여기로 열 수
+        있습니다.
       </p>
     </div>
   )

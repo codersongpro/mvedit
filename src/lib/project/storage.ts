@@ -167,6 +167,34 @@ export async function renameProject(id: string, name: string): Promise<void> {
   })
 }
 
+/**
+ * 이미 저장해 둔 원본 중에서 이 원본들을 찾는다 (FR-025).
+ *
+ * 같은 기기에서 만든 `.cutcap` 을 다시 열면 원본이 이미 저장소에 있다.
+ * 그때는 파일을 다시 고르라고 하지 않는다.
+ *
+ * 키만 먼저 훑는다. 전체 레코드를 가져오면 저장된 영상 전부가 메모리에
+ * 올라와 수백 MB 를 먹는다.
+ */
+export async function findStoredMedia(sourceIds: string[]): Promise<Map<string, File>> {
+  const found = new Map<string, File>()
+  if (sourceIds.length === 0) return found
+
+  await withStore(MEDIA_STORE, 'readonly', async (tx) => {
+    const store = tx.objectStore(MEDIA_STORE)
+    const keys = (await request(store.getAllKeys() as IDBRequest<IDBValidKey[]>)).map(String)
+
+    for (const sourceId of sourceIds) {
+      const key = keys.find((candidate) => candidate.endsWith(`:${sourceId}`))
+      if (!key) continue
+      const record = await request(store.get(key) as IDBRequest<{ file: File } | undefined>)
+      if (record?.file) found.set(sourceId, record.file)
+    }
+  })
+
+  return found
+}
+
 export interface StorageRoom {
   usage: number
   quota: number

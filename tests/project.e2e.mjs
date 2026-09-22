@@ -1,13 +1,18 @@
 /**
- * Phase 11 자동 검증 — 자동 저장·복원, 프로젝트 목록 (FR-023, 026, 031).
+ * Phase 11·12 자동 검증 — 저장·복원과 프로젝트 파일
+ * (FR-023, 024, 025, 026, 031).
  *
  * AC-026 편집 후 탭을 닫았다 다시 열면 목록에 있고, 열면 편집 상태가 복원된다.
- * AC-030 저장공간이 부족하면 자동 저장 전에 경고가 뜨고 앱은 계속 동작한다.
+ * AC-027 `.cutcap` 은 수 KB 이고 영상 데이터를 담지 않는다.
+ * AC-028 저장소가 빈 다른 브라우저에서도 원본만 다시 고르면 그대로 복원된다.
+ * AC-029 없는 원본을 파일명·크기로 알려 주고, 그 파일만 고르면 이어진다.
+ * AC-030 저장공간이 부족하면 경고가 뜨고 앱은 계속 동작한다.
  * AC-035 이름을 바꾸고 다른 하나를 지우면 원본 사본까지 사라진다.
  *
  *   npm run build && npm run test:project
  */
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startPreviewServer } from './server.mjs'
@@ -44,8 +49,9 @@ try {
   browser = await chromium.launch()
   // 저장소는 컨텍스트마다 따로다. 한 컨텍스트를 끝까지 써야 "탭을 닫았다
   // 다시 열었다"를 흉내 낼 수 있다.
-  const context = await browser.newContext()
+  const context = await browser.newContext({ acceptDownloads: true })
   const page = await context.newPage({ viewport: { width: 1280, height: 1100 } })
+  const workDir = await mkdtemp(join(tmpdir(), 'cutcap-project-'))
   page.on('pageerror', (error) => pageErrors.push(String(error)))
   page.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning')
@@ -98,9 +104,9 @@ try {
    * 참으로 취급돼 첫 판에 바로 통과해 버린다. 여기서 실제로 그 함정에 빠져
    * 저장 전에 새로고침하는 바람에 한참 헤맸다.
    */
-  async function waitForSave(name, expectedClips) {
+  async function waitForSave(name, expectedClips, target = page) {
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      const saved = await page.evaluate(
+      const saved = await target.evaluate(
         async ([projectName, count]) => {
           const db = await new Promise((resolve, reject) => {
             const request = indexedDB.open('cutcap')
@@ -268,6 +274,172 @@ try {
     `원본 사본 ${afterDelete.media}개`,
   )
 
+  // ---------- AC-027~029 프로젝트 파일 (.cutcap) ----------
+  // 편집을 좀 해 두고 저장한다. 순서·자른 위치·볼륨이 그대로 돌아오는지
+  // 봐야 하므로 기본 상태로는 의미가 없다.
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await addFiles([`앞.${clip.extension}`, `뒤.${clip.extension}`])
+  await page.locator('[data-testid="clip"]').first().click()
+  await page.click('[data-testid="split"]')
+  await page.locator('[data-testid="clip"]').nth(2).click()
+  await page.click('[data-testid="move-back"]')
+  await page.locator('[data-testid="clip"]').first().click()
+  await page.click('[data-testid="toggle-mute"]')
+  await waitForSave('앞', 3)
+
+  const beforeTimeline = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('cutcap')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      const projects = await new Promise((resolve, reject) => {
+        const request = db.transaction('projects').objectStore('projects').getAll()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      const project = projects.find((candidate) => candidate.name === '앞')
+      return JSON.stringify(project.timeline)
+    } finally {
+      db.close()
+    }
+  })
+
+  const filePromise = page.waitForEvent('download')
+  await page.click('[data-testid="save-project-file"]')
+  const download = await filePromise
+  const projectPath = join(workDir, 'saved.cutcap')
+  await download.saveAs(projectPath)
+  // Playwright 는 한글 파일 이름을 'download' 로 떨어뜨린다(도구 한계).
+  // 제품이 정한 이름은 링크의 download 속성에서 읽는다.
+  const savedName = await page.getAttribute('[data-testid="project-file-link"]', 'download')
+
+  const projectBytes = await readFile(projectPath)
+  const projectText = projectBytes.toString('utf8')
+  check(
+    'AC-027 저장 파일 이름이 프로젝트 이름 + .cutcap',
+    savedName === '앞.cutcap',
+    String(savedName),
+  )
+  check(
+    'AC-027 파일이 수십 KB 이하다',
+    projectBytes.length < 50 * 1024,
+    `${(projectBytes.length / 1024).toFixed(1)} KB`,
+  )
+  check(
+    'AC-027 영상 데이터가 들어 있지 않다',
+    // 원본 하나만 해도 80KB 다. 그만한 것이 들어갈 수 없는 크기이고,
+    // base64 로 실린 흔적도 없어야 한다.
+    projectBytes.length < clip.bytes.length / 2 && !/data:video|base64/.test(projectText),
+    `${(projectBytes.length / 1024).toFixed(1)} KB / 원본 ${(clip.bytes.length / 1024).toFixed(0)} KB`,
+  )
+
+  // AC-028 다른 기기·브라우저: 저장소가 빈 새 컨텍스트에서 연다.
+  const freshContext = await browser.newContext()
+  const fresh = await freshContext.newPage()
+  const freshErrors = []
+  fresh.on('pageerror', (error) => freshErrors.push(String(error)))
+  await fresh.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
+
+  const dropFiles = (target, entries) =>
+    target.evaluate(
+      ([list, selector]) => {
+        const transfer = new DataTransfer()
+        for (const entry of list) {
+          transfer.items.add(
+            new File([new Uint8Array(entry.bytes)], entry.name, { type: entry.type }),
+          )
+        }
+        const input = document.querySelector(selector)
+        input.files = transfer.files
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      },
+      [entries, '[data-testid="file-input"]'],
+    )
+
+  await dropFiles(fresh, [
+    { bytes: Array.from(projectBytes), name: 'saved.cutcap', type: 'application/json' },
+  ])
+  await fresh.waitForSelector('[data-testid="relink-panel"]', { timeout: 15_000 })
+  check('AC-029 원본을 다시 고르라는 안내가 뜬다', true)
+  check(
+    'AC-029 필요한 파일이 이름과 크기로 나온다',
+    (await fresh.locator('[data-testid="relink-source"]').count()) === 2 &&
+      (await fresh.locator('[data-testid="relink-source"]').first().innerText()).includes('앞.'),
+    (await fresh.locator('[data-testid="relink-source"]').first().innerText()).replace('\n', ' '),
+  )
+
+  // AC-029 먼저 한 개만 고른다. 나머지 하나는 여전히 필요하다고 나와야 한다.
+  await fresh.evaluate(
+    ([bytes, type]) => {
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([new Uint8Array(bytes)], '앞.webm', { type }))
+      const input = document.querySelector('[data-testid="relink-input"]')
+      input.files = transfer.files
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    },
+    [clip.bytes, clip.mimeType],
+  )
+  await fresh.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="relink-source"][data-resolved="yes"]').length === 1,
+    { timeout: 10_000 },
+  )
+  check(
+    'AC-029 고른 파일만 연결되고 나머지는 계속 필요하다',
+    (await fresh.locator('[data-testid="relink-pick"]').innerText()).includes('1개 필요'),
+    await fresh.locator('[data-testid="relink-pick"]').innerText(),
+  )
+
+  await fresh.evaluate(
+    ([bytes, type]) => {
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([new Uint8Array(bytes)], '뒤.webm', { type }))
+      const input = document.querySelector('[data-testid="relink-input"]')
+      input.files = transfer.files
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    },
+    [clip.bytes, clip.mimeType],
+  )
+  await fresh.waitForSelector('[data-testid="relink-open"]', { timeout: 10_000 })
+  await fresh.click('[data-testid="relink-open"]')
+  await fresh.waitForSelector('[data-testid="clip"]', { timeout: 30_000 })
+
+  check(
+    'AC-028 클립 수가 그대로 복원된다',
+    (await fresh.locator('[data-testid="clip"]').count()) === 3,
+    `${await fresh.locator('[data-testid="clip"]').count()}개`,
+  )
+
+  await waitForSave('앞', 3, fresh)
+  const restoredTimeline = await fresh.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('cutcap')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      const projects = await new Promise((resolve, reject) => {
+        const request = db.transaction('projects').objectStore('projects').getAll()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      return JSON.stringify(projects[0]?.timeline ?? null)
+    } finally {
+      db.close()
+    }
+  })
+  check(
+    'AC-028 순서·자른 위치·볼륨이 저장 시점과 같다',
+    restoredTimeline === beforeTimeline,
+    restoredTimeline === beforeTimeline
+      ? '타임라인 전체가 일치'
+      : `복원 ${restoredTimeline?.slice(0, 120)} / 저장 ${beforeTimeline?.slice(0, 120)}`,
+  )
+  check('AC-028 불러온 뒤 페이지 오류 없음', freshErrors.length === 0, freshErrors.join(' | '))
+  await freshContext.close()
+
   // ---------- AC-030 저장공간 부족 ----------
   // 실제로 디스크를 채울 수는 없으므로 브라우저가 알려 주는 남은 용량만
   // 바꿔 끼운다. 제품 코드에는 시험용 분기를 두지 않는다.
@@ -285,8 +457,8 @@ try {
   if (warned) {
     const message = await page.locator('[data-testid="storage-warning"]').innerText()
     check(
-      'AC-030 경고가 무엇을 해야 하는지 알려 준다',
-      message.includes('내보내기'),
+      'AC-030 경고가 프로젝트 파일 저장을 권한다',
+      message.includes('프로젝트 파일 저장'),
       message.split('\n')[0],
     )
   }
