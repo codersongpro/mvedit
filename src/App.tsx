@@ -298,6 +298,15 @@ export default function App() {
           </div>
         )}
       </section>
+
+      {/* 만든 사람. 화면 맨 아래에 조용히 둔다 — 편집을 방해하지 않으면서도
+          누가 만들었는지 찾을 수 있어야 한다. */}
+      <footer className="border-t border-slate-800 pt-4 text-xs text-slate-500">
+        <p>
+          <span className="font-semibold text-slate-400">송동석</span> · Teacher / Data Analystic /
+          App developer
+        </p>
+      </footer>
     </main>
   )
 }
