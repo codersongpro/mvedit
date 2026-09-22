@@ -211,6 +211,58 @@ try {
   )
   check('빈 화면 색이 미리보기에 반영', blankColor === 'rgb(255, 255, 255)', blankColor)
 
+  // ---------- 재생을 따라 타임라인이 움직인다 ----------
+  // 확대해 두면 타임라인이 화면보다 넓어진다. 이때 화면이 따라오지 않으면
+  // 재생헤드만 화면 밖에서 움직여 지금 어디를 보는지 알 수 없다.
+  await load([`가.${clip.extension}`, `나.${clip.extension}`, `다.${clip.extension}`])
+  for (let step = 0; step < 5; step += 1) {
+    await page.click('[data-testid="zoom-in"]')
+  }
+
+  const viewState = () =>
+    page.evaluate(() => {
+      const scroll = document.querySelector('[data-testid="timeline"]')
+      const head = document.querySelector('[data-testid="playhead"]')
+      const box = scroll.getBoundingClientRect()
+      const mark = head.getBoundingClientRect()
+      return {
+        scrollLeft: Math.round(scroll.scrollLeft),
+        wider: scroll.scrollWidth > scroll.clientWidth,
+        visible: mark.x >= box.x && mark.x <= box.x + box.width,
+        seconds: Number(head.dataset.seconds),
+      }
+    })
+
+  const zoomed = await viewState()
+  check('확대하면 타임라인이 화면보다 넓어진다', zoomed.wider)
+  check(
+    '확대해도 재생헤드가 화면 안에 남는다',
+    zoomed.visible,
+    `스크롤 ${zoomed.scrollLeft}, 재생헤드 ${zoomed.seconds.toFixed(2)}초`,
+  )
+
+  await page.click('[data-testid="play-toggle"]')
+  const followed = await page
+    .waitForFunction(
+      (start) => {
+        const scroll = document.querySelector('[data-testid="timeline"]')
+        return scroll.scrollLeft > start + 50
+      },
+      zoomed.scrollLeft,
+      { timeout: 20_000 },
+    )
+    .then(() => true)
+    .catch(() => false)
+  check('재생하면 타임라인이 따라 움직인다', followed)
+
+  const playingState = await viewState()
+  check(
+    '재생 중에도 재생헤드가 화면 안에 있다',
+    playingState.visible,
+    `스크롤 ${playingState.scrollLeft}, 재생헤드 ${playingState.seconds.toFixed(2)}초`,
+  )
+  await page.click('[data-testid="play-toggle"]')
+
   // ---------- FR-015 미리보기가 출력 설정을 따른다 ----------
   await load([`가.${clip.extension}`])
   await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()

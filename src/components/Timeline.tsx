@@ -23,6 +23,9 @@ const TRACK_HEIGHT = 72
 const SUBTITLE_LANE_HEIGHT = 30
 const ZOOM_STEP = 1.6
 
+/** 재생헤드가 가장자리 이만큼 안쪽으로 들어오면 화면을 민다. */
+const FOLLOW_MARGIN = 24
+
 /**
  * 시간축은 철저히 선형으로 그린다. 짧은 클립을 보기 좋게 하려고 최소 폭을
  * 주면 화면 위치와 실제 시각이 어긋나 재생헤드 분할이 엉뚱한 곳을 자른다.
@@ -54,6 +57,8 @@ export function Timeline() {
   // 확대 콜백은 의존성을 늘리지 않으려고 ref 로 읽는다.
   const centeredRef = useRef(centered)
   centeredRef.current = centered
+  const playheadRef = useRef(playhead)
+  playheadRef.current = playhead
 
   // 시작과 끝도 중앙에 놓으려면 앞뒤로 화면 절반만큼의 여백이 필요하다.
   //
@@ -97,6 +102,28 @@ export function Timeline() {
       syncingRef.current = false
     })
   }, [centered, halfWidth, playhead, pxPerSecond, contentOffset])
+
+  /**
+   * 넓은 화면에서는 재생헤드가 보이도록 타임라인을 따라 민다.
+   *
+   * 확대해 놓으면 타임라인이 화면보다 넓어진다. 그대로 두면 재생해도 화면은
+   * 가만히 있고 재생헤드만 화면 밖에서 움직여, 지금 어디를 보고 있는지 알 수
+   * 없다. 확대한 뒤에도 마찬가지다.
+   *
+   * 화면 밖으로 나갈 때만 민다. 매번 가운데로 맞추면 눈이 따라가기 어렵다.
+   */
+  useEffect(() => {
+    const scroll = scrollRef.current
+    if (centered || !scroll) return
+
+    const x = contentOffset() + playhead * pxPerSecond
+    const visibleFrom = scroll.scrollLeft + FOLLOW_MARGIN
+    const visibleTo = scroll.scrollLeft + scroll.clientWidth - FOLLOW_MARGIN
+    if (x >= visibleFrom && x <= visibleTo) return
+
+    // 왼쪽 1/5 지점에 둔다. 앞으로 재생될 부분이 화면에 남아 있어야 한다.
+    scroll.scrollLeft = Math.max(0, x - scroll.clientWidth * 0.2)
+  }, [centered, playhead, pxPerSecond, contentOffset])
 
   /** 손가락으로 민 만큼 재생헤드를 옮긴다 (AC-033). */
   const onScroll = useCallback(() => {
@@ -155,7 +182,9 @@ export function Timeline() {
       if (centeredRef.current) return next
 
       const contentLeft = content.getBoundingClientRect().left
-      const anchorX = anchorClientX ?? scroll.getBoundingClientRect().left + scroll.clientWidth / 2
+      // 기준점을 주지 않은 확대(버튼)는 재생헤드를 붙잡는다. 화면 가운데를
+      // 붙잡으면 지금 편집하던 자리가 화면 밖으로 밀려난다.
+      const anchorX = anchorClientX ?? contentLeft + playheadRef.current * current
       const anchorSeconds = (anchorX - contentLeft) / current
       // 배율이 바뀐 뒤 같은 시각이 같은 화면 위치에 오도록 스크롤을 민다.
       requestAnimationFrame(() => {
