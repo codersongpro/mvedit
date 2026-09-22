@@ -1,8 +1,9 @@
 /**
  * Phase 13 자동 검증 — 모바일 세로 레이아웃 (FR-029).
  *
- * AC-033 타임라인을 좌우로 밀면 재생헤드는 중앙에 고정된 채 타임라인이
- *        움직이고, 핀치로 확대하면 프레임 단위로 위치를 맞출 수 있다.
+ * AC-033 타임라인은 맨 왼쪽에서 시작하고, 좌우로 밀어 원하는 곳을 찾은 뒤
+ *        눌러 재생헤드를 옮긴다. 재생하면 화면이 재생헤드를 따라가고,
+ *        핀치로 확대하면 프레임 단위로 위치를 맞출 수 있다.
  *
  *   npm run build && npm run test:mobile
  */
@@ -84,10 +85,9 @@ try {
     },
     [clip.bytes, clip.mimeType],
   )
-  await page.waitForFunction(
-    () => document.querySelectorAll('[data-testid="clip"]').length === 2,
-    { timeout: 60_000 },
-  )
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="clip"]').length === 2, {
+    timeout: 60_000,
+  })
 
   const playheadSeconds = () =>
     page.$eval('[data-testid="playhead"]', (node) => Number(node.dataset.seconds))
@@ -95,17 +95,30 @@ try {
     page.$eval('[data-testid="timeline"]', (node) => Number(node.dataset.pxPerSecond))
 
   // ---------- 레이아웃 ----------
+  // 첫 클립은 타임라인 맨 왼쪽에서 시작해야 한다. 앞에 빈 자리를 두면
+  // 실기기에서 "화면 절반이 비어 있고 영상이 가운데서 시작하는" 것으로 보인다.
+  const firstClipOffset = await page.evaluate(() => {
+    const scroll = document.querySelector('[data-testid="timeline"]')
+    const clip = document.querySelector('[data-testid="clip"]')
+    return Math.round(clip.getBoundingClientRect().x - scroll.getBoundingClientRect().x)
+  })
   check(
-    'FR-029 모바일에서는 중앙 고정 모드가 켜진다',
-    (await page.getAttribute('[data-testid="timeline"]', 'data-centered')) === 'yes',
-    await page.getAttribute('[data-testid="timeline"]', 'data-centered'),
+    'FR-029 첫 클립이 타임라인 맨 왼쪽에서 시작한다',
+    firstClipOffset <= 12,
+    `왼쪽에서 ${firstClipOffset}px`,
+  )
+  check(
+    'FR-029 시작할 때 가로로 밀려 있지 않다',
+    (await page.$eval('[data-testid="timeline"]', (node) => node.scrollLeft)) === 0,
   )
 
   const toolbar = await page.locator('[data-testid="mobile-toolbar"]').boundingBox()
   check(
     'FR-029 도구 바가 화면 맨 아래에 붙어 있다',
     toolbar !== null && Math.abs(toolbar.y + toolbar.height - VIEWPORT.height) < 2,
-    toolbar ? `아래 끝 ${Math.round(toolbar.y + toolbar.height)} / 화면 ${VIEWPORT.height}` : '없음',
+    toolbar
+      ? `아래 끝 ${Math.round(toolbar.y + toolbar.height)} / 화면 ${VIEWPORT.height}`
+      : '없음',
   )
 
   // 페이지를 끝까지 내려도 도구 바는 그대로 있어야 한다.
@@ -117,9 +130,8 @@ try {
     afterScroll ? `아래 끝 ${Math.round(afterScroll.y + afterScroll.height)}` : '없음',
   )
 
-  const sizes = await page.$$eval(
-    '[data-testid="mobile-toolbar"] button',
-    (nodes) => nodes.map((node) => {
+  const sizes = await page.$$eval('[data-testid="mobile-toolbar"] button', (nodes) =>
+    nodes.map((node) => {
       const box = node.getBoundingClientRect()
       return { w: Math.round(box.width), h: Math.round(box.height) }
     }),
@@ -131,51 +143,50 @@ try {
   )
   await page.evaluate(() => window.scrollTo(0, 0))
 
-  // ---------- AC-033 밀어서 이동, 재생헤드는 중앙 고정 ----------
-  const centerLine = await page.locator('[data-testid="center-playhead"]').boundingBox()
+  // ---------- AC-033 밀어서 찾고, 눌러서 옮긴다 ----------
   const track = await page.locator('[data-testid="timeline"]').boundingBox()
-  check(
-    'AC-033 재생헤드 선이 타임라인 가로 중앙에 있다',
-    Math.abs(centerLine.x + centerLine.width / 2 - (track.x + track.width / 2)) < 2,
-    `선 ${Math.round(centerLine.x + centerLine.width / 2)} / 중앙 ${Math.round(track.x + track.width / 2)}`,
-  )
-
-  // 손가락으로 미는 조작은 브라우저가 스크롤로 바꿔 준다. 우리 코드가 보는
-  // 것은 그 스크롤이므로, 스크롤 위치를 옮겨 같은 길을 지나게 한다.
-  const before = await playheadSeconds()
   const scale = await pxPerSecond()
+
+  // 손가락으로 미는 조작은 브라우저가 스크롤로 바꿔 준다.
   await page.evaluate((delta) => {
     const scroll = document.querySelector('[data-testid="timeline"]')
     scroll.scrollLeft += delta
-    scroll.dispatchEvent(new Event('scroll', { bubbles: true }))
   }, 3 * scale)
-  await page.waitForFunction(
-    (previous) =>
-      Number(document.querySelector('[data-testid="playhead"]').dataset.seconds) > previous + 2.5,
-    before,
-    { timeout: 5_000 },
-  )
-  const after = await playheadSeconds()
   check(
-    'AC-033 타임라인을 밀면 재생헤드 시각이 따라 움직인다',
-    Math.abs(after - (before + 3)) < 0.2,
-    `${before.toFixed(2)}초 → ${after.toFixed(2)}초 (3초만큼 밀었음)`,
+    'AC-033 타임라인을 밀면 화면이 움직인다',
+    (await page.$eval('[data-testid="timeline"]', (node) => node.scrollLeft)) > 0,
+    `스크롤 ${await page.$eval('[data-testid="timeline"]', (node) => node.scrollLeft)}`,
+  )
+  check(
+    'AC-033 미는 것만으로는 재생헤드가 움직이지 않는다',
+    (await playheadSeconds()) === 0,
+    `${(await playheadSeconds()).toFixed(2)}초`,
   )
 
-  const centerAfter = await page.locator('[data-testid="center-playhead"]').boundingBox()
+  // 눌러서 그 지점으로 옮긴다. 보이는 위치와 실제 시각이 맞아야 한다.
+  const ruler = await page.locator('[data-testid="ruler"]').boundingBox()
+  await page.mouse.click(ruler.x + ruler.width / 3, ruler.y + ruler.height / 2)
+  const tapped = await playheadSeconds()
+  const expected = await page.evaluate(
+    ([x]) => {
+      const content = document.querySelector('[data-testid="ruler"]').parentElement
+      const box = content.getBoundingClientRect()
+      const pps = Number(document.querySelector('[data-testid="timeline"]').dataset.pxPerSecond)
+      return (x - box.x) / pps
+    },
+    [ruler.x + ruler.width / 3],
+  )
   check(
-    'AC-033 민 뒤에도 재생헤드 선은 중앙 그대로',
-    Math.abs(centerAfter.x - centerLine.x) < 1,
-    `${Math.round(centerAfter.x)} / 이전 ${Math.round(centerLine.x)}`,
+    'AC-033 누른 자리로 재생헤드가 간다',
+    Math.abs(tapped - expected) < 0.1,
+    `${tapped.toFixed(2)}초 / 누른 자리 ${expected.toFixed(2)}초`,
   )
 
-  // 클립 안의 실제 재생헤드도 화면 중앙에 와 있어야 한다. 선만 중앙이고
-  // 내용이 어긋나면 자르는 위치가 보이는 곳과 달라진다.
   const marker = await page.locator('[data-testid="playhead"]').boundingBox()
   check(
-    'AC-033 타임라인 안의 재생헤드도 중앙에 맞는다',
-    Math.abs(marker.x + marker.width / 2 - (track.x + track.width / 2)) < 3,
-    `${Math.round(marker.x + marker.width / 2)} / 중앙 ${Math.round(track.x + track.width / 2)}`,
+    'AC-033 재생헤드가 화면 안에 보인다',
+    marker.x >= track.x && marker.x <= track.x + track.width,
+    `${Math.round(marker.x)} / 타임라인 ${Math.round(track.x)}~${Math.round(track.x + track.width)}`,
   )
 
   // ---------- AC-033 핀치 확대 ----------
@@ -201,12 +212,12 @@ try {
     `${beforeTime.toFixed(2)}초 → ${(await playheadSeconds()).toFixed(2)}초`,
   )
 
-  const zoomedCenter = await page.locator('[data-testid="playhead"]').boundingBox()
+  const zoomedMarker = await page.locator('[data-testid="playhead"]').boundingBox()
   const zoomedTrack = await page.locator('[data-testid="timeline"]').boundingBox()
   check(
-    'AC-033 확대 뒤에도 재생헤드가 중앙에 있다',
-    Math.abs(zoomedCenter.x + zoomedCenter.width / 2 - (zoomedTrack.x + zoomedTrack.width / 2)) < 3,
-    `${Math.round(zoomedCenter.x + zoomedCenter.width / 2)} / 중앙 ${Math.round(zoomedTrack.x + zoomedTrack.width / 2)}`,
+    'AC-033 확대 뒤에도 재생헤드가 화면 안에 있다',
+    zoomedMarker.x >= zoomedTrack.x && zoomedMarker.x <= zoomedTrack.x + zoomedTrack.width,
+    `${Math.round(zoomedMarker.x)} / 타임라인 ${Math.round(zoomedTrack.x)}~${Math.round(zoomedTrack.x + zoomedTrack.width)}`,
   )
 
   // ---------- 편집이 한 번의 탭으로 된다 ----------
@@ -253,11 +264,6 @@ try {
     [clip.bytes, clip.mimeType],
   )
   await widePage.waitForSelector('[data-testid="clip"]', { timeout: 60_000 })
-  check(
-    '넓은 화면에서는 중앙 고정 모드가 꺼진다',
-    (await widePage.getAttribute('[data-testid="timeline"]', 'data-centered')) === 'no',
-    await widePage.getAttribute('[data-testid="timeline"]', 'data-centered'),
-  )
   check(
     '넓은 화면에는 하단 고정 도구 바가 없다',
     (await widePage.locator('[data-testid="mobile-toolbar"]').count()) === 0,
