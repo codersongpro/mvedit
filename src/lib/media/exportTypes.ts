@@ -48,9 +48,11 @@ export type ExportErrorCode =
 
 /** 실패 사유별 한국어 안내. 사용자가 다음에 뭘 해야 하는지까지 적는다. */
 export const EXPORT_ERROR_MESSAGE: Record<ExportErrorCode, string> = {
-  unreadable: '이 파일을 읽을 수 없습니다. 이 브라우저가 지원하지 않는 형식이거나 파일이 손상되었을 수 있습니다.',
+  unreadable:
+    '이 파일을 읽을 수 없습니다. 이 브라우저가 지원하지 않는 형식이거나 파일이 손상되었을 수 있습니다.',
   'no-video-track': '영상 트랙이 없는 파일입니다. 소리만 있는 파일은 아직 지원하지 않습니다.',
-  'codec-unsupported': '이 기기에서 내보내기에 필요한 코덱을 지원하지 않습니다. 다른 브라우저에서 열어 보세요.',
+  'codec-unsupported':
+    '이 기기에서 내보내기에 필요한 코덱을 지원하지 않습니다. 다른 브라우저에서 열어 보세요.',
   canceled: '내보내기를 취소했습니다.',
   'out-of-memory': '메모리가 부족합니다. 해상도를 낮추거나 더 짧은 영상으로 나눠 내보내 주세요.',
   unknown: '내보내는 중 문제가 발생했습니다.',
@@ -73,6 +75,8 @@ export type ExportWorkerRequest = { type: 'start'; job: ExportJob } | { type: 'c
 
 export type ExportWorkerResponse =
   | { type: 'progress'; progress: number; processedTime: number }
+  /** 목표 용량을 넘어 다시 인코딩을 시작했다 (FR-019, AC-021) */
+  | { type: 'retrying'; firstSize: number; targetBytes: number }
   | {
       type: 'done'
       buffer: ArrayBuffer
@@ -80,5 +84,9 @@ export type ExportWorkerResponse =
       fileExtension: string
       /** 자막이 있을 때만 채워진다 */
       srt: string | null
+      /** 목표 용량을 맞추려고 다시 인코딩한 횟수. 0 또는 1 (AC-021) */
+      retryCount: number
+      /** 목표 용량(바이트). 설정하지 않았으면 null */
+      targetBytes: number | null
     }
   | { type: 'error'; code: ExportErrorCode; message: string }

@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 import { useProject } from '../lib/project/store'
 import {
+  MB,
   RESOLUTIONS,
   computeOutputSize,
   estimateFileSize,
   fitResolution,
+  floorFileSize,
 } from '../lib/media/outputSize'
 import { timelineDuration, type AspectRatio, type QualityLevel } from '../lib/project/types'
 import { formatBytes } from '../lib/format'
@@ -62,6 +64,11 @@ export function ExportSettings() {
   // 경고를 띄우면 앱이 자기 기본값을 탓하는 셈이라, 낮출 수 있을 때만 알린다.
   const upscaling =
     size.height > sourceSize.height && setting.resolution > fitResolution(sourceSize.height)
+
+  // 목표가 최소 화질로 낼 수 있는 용량보다 작으면 어떻게 해도 못 맞춘다.
+  // 내보내기를 돌려 실패를 보여 주기 전에 미리 알린다 (FR-019).
+  const floor = floorFileSize(duration)
+  const tooSmallTarget = setting.targetSizeMb !== null && setting.targetSizeMb * MB < floor
 
   return (
     <div
@@ -141,6 +148,47 @@ export function ExportSettings() {
         ))}
       </Row>
 
+      <Row label="목표 용량">
+        <Choice
+          testId="target-off"
+          active={setting.targetSizeMb === null}
+          onClick={() => setSetting({ targetSizeMb: null })}
+        >
+          제한 없음
+        </Choice>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0.1}
+            step={0.1}
+            data-testid="target-size"
+            value={setting.targetSizeMb ?? ''}
+            placeholder="예: 20"
+            onChange={(event) => {
+              const value = Number(event.target.value)
+              setSetting({
+                targetSizeMb: event.target.value === '' || value <= 0 ? null : value,
+              })
+            }}
+            className="h-10 w-24 rounded-lg bg-slate-800 px-3 text-xs text-slate-100 tabular-nums"
+          />
+          <span className="text-xs text-slate-400">MB 이하</span>
+        </label>
+        {setting.targetSizeMb !== null && (
+          <span className="text-[11px] text-slate-500">
+            용량에 맞춰 화질을 자동으로 낮춥니다. 소리는 그대로 둡니다.
+          </span>
+        )}
+      </Row>
+
+      {tooSmallTarget && (
+        <p data-testid="target-too-small" className="text-xs leading-relaxed text-amber-300/80">
+          {duration.toFixed(0)}초 영상은 최소 화질로도 약 {formatBytes(floor)} 입니다. 목표를
+          늘리거나 영상을 더 짧게 잘라 주세요.
+        </p>
+      )}
+
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-3">
         <span data-testid="output-size" className="text-sm text-slate-200 tabular-nums">
           {size.width}×{size.height}
@@ -149,7 +197,9 @@ export function ExportSettings() {
           예상 용량 {formatBytes(estimated)}
         </span>
         <span className="text-[11px] text-slate-500">
-          최대치입니다. 단순한 장면은 더 작게 나옵니다
+          {setting.targetSizeMb === null
+            ? '대략치입니다. 단순한 장면은 훨씬 작게 나옵니다'
+            : '목표를 넘으면 화질을 낮춰 한 번 다시 인코딩합니다'}
         </span>
       </div>
 

@@ -56,10 +56,56 @@ export function fitResolution(sourceHeight: number): Resolution {
   return RESOLUTIONS.find((resolution) => resolution <= sourceHeight) ?? 480
 }
 
+/** 너무 낮으면 화면이 뭉개지고, 너무 높으면 용량만 커진다. */
+export const MIN_VIDEO_BITRATE = 300_000
+export const MAX_VIDEO_BITRATE = 40_000_000
+
+/** 목표 용량을 말할 때 쓰는 단위. 파일 탐색기가 보여 주는 값과 같게 1024 기준. */
+export const MB = 1024 * 1024
+
+/**
+ * 컨테이너·헤더가 차지하는 몫.
+ *
+ * 비트레이트만으로 역산하면 인덱스와 헤더 때문에 목표를 조금씩 넘는다.
+ * 짧은 영상일수록 비중이 커서 여유를 둔다.
+ */
+const CONTAINER_OVERHEAD = 0.03
+
 export function estimateVideoBitrate(setting: ExportSetting, size: Size): number {
   const raw = size.width * size.height * setting.fps * BITS_PER_PIXEL[setting.quality]
-  // 너무 낮으면 화면이 뭉개지고, 너무 높으면 용량만 커진다.
-  return Math.round(Math.min(40_000_000, Math.max(300_000, raw)))
+  return clampBitrate(raw)
+}
+
+function clampBitrate(value: number): number {
+  return Math.round(Math.min(MAX_VIDEO_BITRATE, Math.max(MIN_VIDEO_BITRATE, value)))
+}
+
+/**
+ * 목표 용량에서 영상 비트레이트를 역산한다 (FR-018).
+ *
+ * 소리는 용량을 줄이려고 건드리지 않는다. 화질은 눈으로 참을 수 있어도
+ * 소리가 뭉개지면 못 쓰는 영상이 된다.
+ */
+export function bitrateForTargetSize(targetBytes: number, durationSeconds: number): number {
+  if (durationSeconds <= 0) return MIN_VIDEO_BITRATE
+  const usableBits = targetBytes * (1 - CONTAINER_OVERHEAD) * 8
+  return clampBitrate(usableBits / durationSeconds - AUDIO_BITRATE)
+}
+
+/**
+ * 실제로 쓸 영상 비트레이트.
+ *
+ * 목표 용량은 상한으로만 쓴다. 목표를 크게 잡았다고 화질 설정보다 높여
+ * 내보내면, 사용자가 고른 화질을 앱이 뒤집는 셈이 된다.
+ */
+export function resolveVideoBitrate(
+  setting: ExportSetting,
+  size: Size,
+  durationSeconds: number,
+): number {
+  const byQuality = estimateVideoBitrate(setting, size)
+  if (setting.targetSizeMb === null) return byQuality
+  return Math.min(byQuality, bitrateForTargetSize(setting.targetSizeMb * MB, durationSeconds))
 }
 
 /** 예상 용량(바이트). 실제 결과는 장면 복잡도에 따라 달라진다 (FR-017). */
@@ -68,6 +114,25 @@ export function estimateFileSize(
   size: Size,
   durationSeconds: number,
 ): number {
-  const bits = (estimateVideoBitrate(setting, size) + AUDIO_BITRATE) * durationSeconds
-  return Math.round(bits / 8)
+  const bitrate = resolveVideoBitrate(setting, size, durationSeconds)
+  const bits = (bitrate + AUDIO_BITRATE) * durationSeconds
+  return Math.round(bits / 8 / (1 - CONTAINER_OVERHEAD))
+}
+
+/**
+ * 최소 화질로도 나오는 용량(바이트).
+ *
+ * 목표를 이보다 작게 잡으면 어떻게 해도 맞출 수 없다. 내보내기를 돌려
+ * 실패를 확인시키기 전에 미리 알려 주기 위한 값이다 (FR-019).
+ */
+export function floorFileSize(durationSeconds: number): number {
+  const bits = (MIN_VIDEO_BITRATE + AUDIO_BITRATE) * durationSeconds
+  return Math.round(bits / 8 / (1 - CONTAINER_OVERHEAD))
+}
+
+/** 목표를 못 맞췄을 때 제안할 한 단계 낮은 해상도. 더 낮출 수 없으면 null. */
+export function lowerResolution(current: Resolution): Resolution | null {
+  const index = RESOLUTIONS.indexOf(current)
+  if (index === -1 || index === RESOLUTIONS.length - 1) return null
+  return RESOLUTIONS[index + 1]
 }

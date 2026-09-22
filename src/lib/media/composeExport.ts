@@ -17,7 +17,7 @@ import {
 import { toSegments, type Segment } from '../project/playback'
 import { subtitleAt } from '../project/subtitles'
 import type { ExportSetting, Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
-import { computeOutputSize, estimateVideoBitrate, AUDIO_BITRATE } from './outputSize'
+import { computeOutputSize, resolveVideoBitrate, AUDIO_BITRATE } from './outputSize'
 import { drawSubtitle } from './drawSubtitle'
 import { toTimedSubtitles } from './srt'
 import { ExportError, toExportError } from './export'
@@ -59,6 +59,11 @@ export interface ComposeInput {
   subtitleStyle: SubtitleStyle
   setting: ExportSetting
   profile: ExportCodecProfile
+  /**
+   * 영상 비트레이트를 직접 지정한다. 목표 용량을 못 맞춰 다시 인코딩할 때만
+   * 쓴다 (FR-019). 없으면 설정에서 계산한다.
+   */
+  bitrateOverride?: number
 }
 
 export interface ComposeOptions {
@@ -72,6 +77,8 @@ export interface ComposeResult {
   fileExtension: string
   /** 자막이 있을 때만 채워진다 */
   srt: string | null
+  /** 이번에 쓴 영상 비트레이트. 다시 인코딩할 때 기준이 된다. */
+  videoBitrate: number
 }
 
 /**
@@ -122,9 +129,11 @@ export async function composeTimeline(
       target: new BufferTarget(),
     })
 
+    const videoBitrate =
+      input.bitrateOverride ?? resolveVideoBitrate(input.setting, { width, height }, totalDuration)
     const videoSource = new CanvasSource(canvas, {
       codec: input.profile.videoCodec,
-      bitrate: estimateVideoBitrate(input.setting, { width, height }),
+      bitrate: videoBitrate,
     })
     output.addVideoTrack(videoSource, { frameRate: input.setting.fps })
 
@@ -172,6 +181,7 @@ export async function composeTimeline(
       mimeType: input.profile.mimeType,
       fileExtension: input.profile.fileExtension,
       srt: timed.length > 0 ? (await import('./srt')).toSrt(timed) : null,
+      videoBitrate,
     }
   } catch (error) {
     throw toExportError(error)

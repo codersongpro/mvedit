@@ -126,6 +126,8 @@ export interface ExportSetting {
   quality: QualityLevel
   /** 초당 프레임. 지금은 30으로 고정하고 설정 UI 는 두지 않는다. */
   fps: number
+  /** 목표 용량(MB). null 이면 제한 없이 화질 설정대로 내보낸다 (FR-018). */
+  targetSizeMb: number | null
 }
 
 /**
@@ -141,4 +143,5 @@ export const DEFAULT_EXPORT_SETTING: ExportSetting = {
   resolution: 1080,
   quality: 'medium',
   fps: 30,
+  targetSizeMb: null,
 }

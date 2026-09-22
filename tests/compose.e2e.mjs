@@ -582,6 +582,104 @@ try {
     `왼쪽 어두운 세로줄 ${mixedFrame.darkColumns}개`,
   )
 
+  // ---------- AC-020~022 목표 용량 ----------
+  // 무늬 영상은 압축이 잘 되지 않아 요청한 비트레이트를 실제로 다 쓴다.
+  // 평평한 영상으로 재면 목표를 뭘 넣어도 저절로 통과해 검사가 무의미해진다.
+  async function loadCheckered() {
+    await loadProject([
+      { bytes: checkered.bytes, name: `용량.${checkered.extension}`, type: checkered.mimeType },
+    ])
+    await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()
+    await page.click('[data-testid="resolution-480"]')
+    await page.click('[data-testid="quality-high"]')
+  }
+
+  await loadCheckered()
+  const free = await exportAndSave('target-free')
+  const freeSize = (await stat(free.videoPath)).size
+  check(
+    '목표를 두지 않으면 목표 안내가 없다',
+    (await page.locator('[data-testid="target-met"]').count()) === 0 &&
+      (await page.locator('[data-testid="target-missed"]').count()) === 0,
+  )
+  check(
+    '목표를 두지 않으면 재인코딩하지 않는다',
+    (await page.getAttribute('[data-testid="export-done"]', 'data-retry-count')) === '0',
+  )
+
+  // 목표를 방금 나온 크기보다 3KB 작게 잡는다. 이러면 요청 비트레이트는
+  // 그대로인데(화질 설정이 더 낮으므로) 결과가 목표를 넘어, 재인코딩 경로가
+  // 실제로 돈다. AC-021 이 말하는 "1회차 결과가 목표 초과" 상황이다.
+  const tightTarget = freeSize - 3 * 1024
+  await loadCheckered()
+  await page.fill('[data-testid="target-size"]', (tightTarget / (1024 * 1024)).toFixed(4))
+  await page.locator('[data-testid="export-button"]').scrollIntoViewIfNeeded()
+  // 재시도 안내는 2차 인코딩 동안만 떠 있다. 폴링으로 잡으려 하면 놓칠 수
+  // 있으니, 화면 변화를 지켜보다가 한 번이라도 나타났는지 기록한다.
+  await page.evaluate(() => {
+    globalThis.__sawRetry = false
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="export-retrying"]')) globalThis.__sawRetry = true
+    })
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+  })
+  await page.click('[data-testid="export-button"]')
+
+  await page.waitForSelector('[data-testid="export-done"]', { timeout: 240_000 })
+  const retryCount = await page.getAttribute('[data-testid="export-done"]', 'data-retry-count')
+  check('AC-021 재인코딩은 정확히 1회', retryCount === '1', `${retryCount}회`)
+  check(
+    'AC-021 재시도 중임이 화면에 표시된다',
+    await page.evaluate(() => globalThis.__sawRetry === true),
+  )
+
+  const tightPromise = page.waitForEvent('download')
+  await page.click('[data-testid="download-link"]')
+  const tightPath = join(workDir, 'target-tight')
+  await (await tightPromise).saveAs(tightPath)
+  const tightSize = (await stat(tightPath)).size
+  check(
+    'AC-020 결과가 목표 용량 이하',
+    tightSize <= tightTarget,
+    `실제 ${(tightSize / 1024).toFixed(0)}KB / 목표 ${(tightTarget / 1024).toFixed(0)}KB ` +
+      `(제한 없을 때 ${(freeSize / 1024).toFixed(0)}KB)`,
+  )
+  check(
+    'AC-020 목표를 맞췄다는 안내가 뜬다',
+    (await page.locator('[data-testid="target-met"]').count()) === 1,
+  )
+
+  // 어떻게 해도 맞출 수 없는 목표. 최소 화질로도 넘는 경우다.
+  // 720p 로 두면 낮출 해상도가 남아 있어 제안까지 확인할 수 있다.
+  await loadCheckered()
+  await page.click('[data-testid="resolution-720"]')
+  await page.fill('[data-testid="target-size"]', '0.05')
+  check(
+    'FR-019 맞출 수 없는 목표는 내보내기 전에 알려 준다',
+    (await page.locator('[data-testid="target-too-small"]').count()) === 1,
+    await page.locator('[data-testid="target-too-small"]').innerText(),
+  )
+
+  const missed = await exportAndSave('target-missed')
+  const missedSize = (await stat(missed.videoPath)).size
+  check(
+    'AC-022 목표 미달성 사실과 해상도 낮춤 제안이 표시된다',
+    (await page.locator('[data-testid="target-missed"]').count()) === 1 &&
+      (await page.locator('[data-testid="target-missed"]').innerText()).includes('해상도'),
+    await page.locator('[data-testid="target-missed"]').innerText(),
+  )
+  check(
+    'AC-022 목표를 못 맞춰도 파일은 그대로 저장된다',
+    missedSize > 1024,
+    `${(missedSize / 1024).toFixed(0)}KB`,
+  )
+  // 이미 최소 비트레이트로 인코딩했으면 다시 해도 같은 파일이 나온다.
+  // 시간만 두 배로 쓰므로 재시도하지 않는 것이 맞다.
+  check(
+    'FR-019 최소 화질에서는 무의미한 재인코딩을 하지 않는다',
+    (await page.getAttribute('[data-testid="export-done"]', 'data-retry-count')) === '0',
+  )
+
   // ---------- AC-024 취소 ----------
   // 취소할 틈이 있으려면 일이 충분히 커야 한다. 4초짜리 여섯 개.
   await loadProject(
