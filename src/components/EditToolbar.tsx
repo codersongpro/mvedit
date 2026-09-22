@@ -28,14 +28,19 @@ export function EditToolbar() {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <ToolButton testId="split" onClick={split} primary>
-        분할
+        자르기
       </ToolButton>
       <ToolButton testId="delete" onClick={removeSelected} disabled={!hasSelection} danger>
-        삭제
+        지우기
       </ToolButton>
-      <ToolButton testId="insert-blank" onClick={() => insertBlank()}>
-        빈 화면
-      </ToolButton>
+
+      <span className="mx-1 h-5 w-px bg-slate-700" />
+
+      <span className="flex items-center gap-1.5">
+        <span className="text-xs text-slate-400">빈 화면 추가</span>
+        <BlankButton testId="insert-blank" color="#000000" label="검은 빈 화면 추가" onClick={insertBlank} />
+        <BlankButton testId="insert-blank-white" color="#FFFFFF" label="흰 빈 화면 추가" onClick={insertBlank} />
+      </span>
 
       <span className="mx-1 h-5 w-px bg-slate-700" />
 
@@ -65,6 +70,34 @@ export function EditToolbar() {
         다시 실행
       </ToolButton>
     </div>
+  )
+}
+
+/**
+ * 색을 보고 바로 고르게 한다. 목록을 열어 고르게 하면 탭이 한 번 늘고,
+ * 빈 화면은 자막 배경이나 장면 전환으로 자주 넣는 기능이다.
+ */
+function BlankButton({
+  testId,
+  color,
+  label,
+  onClick,
+}: {
+  testId: string
+  color: string
+  label: string
+  onClick: (duration?: number, color?: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-label={label}
+      title={label}
+      onClick={() => onClick(undefined, color)}
+      style={{ backgroundColor: color }}
+      className="h-11 w-11 rounded-lg ring-1 ring-slate-600 transition-transform hover:scale-105"
+    />
   )
 }
 

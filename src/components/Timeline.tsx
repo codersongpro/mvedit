@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { findSource, useProject } from '../lib/project/store'
-import { MIN_CLIP_SECONDS, startOfIndex, type TrimEdge } from '../lib/project/edit'
+import { MIN_CLIP_SECONDS, type TrimEdge } from '../lib/project/edit'
 import { itemDuration, timelineDuration, type MediaSource, type TimelineItem } from '../lib/project/types'
 import { formatClock } from '../lib/format'
 
@@ -178,11 +178,11 @@ export function Timeline() {
                 source={findSource(sources, item.sourceId)}
                 pxPerSecond={pxPerSecond}
                 selected={item.id === selectedItemId}
-                onSelect={() => {
+                onSelect={(clientX) => {
                   select(item.id)
-                  // 클립을 고르면 재생헤드를 그 앞으로 옮긴다. 고른 클립이
-                  // 어디인지 바로 보이고, 이어서 분할하기도 쉽다.
-                  setPlayhead(startOfIndex(timeline, index))
+                  // 클립을 고르면서 누른 그 지점으로 재생헤드를 옮긴다.
+                  // 클립 앞으로 보내면 보려던 장면을 다시 찾아가야 한다.
+                  seekFromPointer(clientX)
                 }}
               />
             ))}
@@ -315,7 +315,7 @@ function Clip({
   source: MediaSource | null
   pxPerSecond: number
   selected: boolean
-  onSelect: () => void
+  onSelect: (clientX: number) => void
 }) {
   const trim = useProject((state) => state.trim)
   const seconds = itemDuration(item)
@@ -385,7 +385,7 @@ function Clip({
       data-selected={selected ? 'true' : 'false'}
       data-duration={previewSeconds.toFixed(3)}
       data-source={source?.fileName ?? ''}
-      onPointerDown={onSelect}
+      onPointerDown={(event) => onSelect(event.clientX)}
       style={{ width: `${previewSeconds * pxPerSecond}px` }}
       className={`relative shrink-0 overflow-hidden rounded-lg bg-slate-800 ring-1 transition-colors ${
         selected ? 'ring-2 ring-sky-400' : 'ring-slate-700'

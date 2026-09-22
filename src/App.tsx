@@ -5,6 +5,7 @@ import { EditToolbar } from './components/EditToolbar'
 import { ExportPanel } from './components/ExportPanel'
 import { FilePicker } from './components/FilePicker'
 import { Preview } from './components/Preview'
+import { SubtitlePanel } from './components/SubtitlePanel'
 import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
 import { useProject } from './lib/project/store'
@@ -76,15 +77,22 @@ export default function App() {
         {timeline.length > 0 && <ClipInspector />}
         {timeline.length > 0 && (
           <p className="text-xs leading-relaxed text-slate-500">
-            눈금을 눌러 위치를 옮기고 분할하세요. 클립을 고르면 양 끝을 끌어 길이를
+            눈금이나 클립을 눌러 위치를 옮기고 자르세요. 클립을 고르면 양 끝을 끌어 길이를
             줄이거나 늘릴 수 있습니다. 두 손가락으로 벌리거나 Ctrl+휠로 확대합니다.
             <span className="hidden sm:inline">
               {' '}
-              단축키: Space 재생 · S 분할 · Delete 삭제 · ←→ 한 프레임 · Ctrl+Z 되돌리기
+              단축키: Space 재생 · S 자르기 · Delete 지우기 · ←→ 한 프레임 · Ctrl+Z 되돌리기
             </span>
           </p>
         )}
       </section>
+
+      {timeline.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold text-slate-300">자막</h2>
+          <SubtitlePanel />
+        </section>
+      )}
 
       {timeline.length > 0 && (
         <section className="flex flex-col gap-3">

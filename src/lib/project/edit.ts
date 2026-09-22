@@ -44,7 +44,19 @@ export function startOfIndex(items: TimelineItem[], index: number): number {
  * 너무 짧아지는 경우인데, 그대로 두면 길이 0짜리 클립이 생겨 이후
  * 내보내기에서 깨진다.
  */
-export function splitAt(items: TimelineItem[], playhead: number): TimelineItem[] | null {
+export interface SplitResult {
+  items: TimelineItem[]
+  /** 나뉘기 전 클립의 id. 자막을 옮길 때 쓴다. */
+  originalId: string
+  leftId: string
+  rightId: string
+  /** 원본 시간축 기준 자른 지점 */
+  cut: number
+  /** 새로 생긴 두 조각 중 앞 조각의 위치 */
+  index: number
+}
+
+export function splitAt(items: TimelineItem[], playhead: number): SplitResult | null {
   const located = findItemAt(items, playhead)
   if (!located) return null
 
@@ -55,9 +67,9 @@ export function splitAt(items: TimelineItem[], playhead: number): TimelineItem[]
   const { item } = located
   const left: TimelineItem = { ...item, id: crypto.randomUUID() }
   const right: TimelineItem = { ...item, id: crypto.randomUUID() }
+  const cut = item.type === 'video' ? item.inPoint + offset : offset
 
   if (item.type === 'video') {
-    const cut = item.inPoint + offset
     left.outPoint = cut
     right.inPoint = cut
   } else {
@@ -65,7 +77,14 @@ export function splitAt(items: TimelineItem[], playhead: number): TimelineItem[]
     right.duration = total - offset
   }
 
-  return [...items.slice(0, located.index), left, right, ...items.slice(located.index + 1)]
+  return {
+    items: [...items.slice(0, located.index), left, right, ...items.slice(located.index + 1)],
+    originalId: item.id,
+    leftId: left.id,
+    rightId: right.id,
+    cut,
+    index: located.index,
+  }
 }
 
 /** 클립을 지운다. 뒤 클립은 자동으로 앞으로 당겨진다 — 사이에 빈틈을 두지 않는다 (FR-006). */
@@ -172,9 +191,8 @@ export function insertBlankAt(
   const split = splitAt(items, playhead)
   if (split) {
     // 나뉜 자리는 재생헤드 바로 뒤 — 새로 생긴 두 조각 사이다.
-    const located = findItemAt(items, playhead)
-    const at = (located?.index ?? 0) + 1
-    return [...split.slice(0, at), blank, ...split.slice(at)]
+    const at = split.index + 1
+    return [...split.items.slice(0, at), blank, ...split.items.slice(at)]
   }
 
   // 나눌 수 없다는 건 재생헤드가 클립 경계에 있다는 뜻이다.

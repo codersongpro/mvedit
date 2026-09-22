@@ -65,3 +65,48 @@ export function itemDuration(item: TimelineItem): number {
 export function timelineDuration(items: TimelineItem[]): number {
   return items.reduce((total, item) => total + itemDuration(item), 0)
 }
+
+/**
+ * 자막 (FR-033~036).
+ *
+ * 시각은 타임라인 절대 시간이 아니라 **클립이 참조하는 원본의 시간축**에
+ * 기록한다. 절대 시간에 묶으면 클립을 옮기거나 지우는 순간 모든 자막이
+ * 어긋나 처음부터 다시 맞춰야 한다.
+ *
+ * 영상 클립은 inPoint~outPoint 와 같은 축이고, 사진·빈 화면은 inPoint 가
+ * 0 이므로 0~duration 축이 된다. 덕분에 트림으로 앞을 잘라내도 자막이
+ * 장면과 함께 움직이고, 되돌리면 그대로 돌아온다.
+ */
+export interface Subtitle {
+  id: string
+  /** 종속된 TimelineItem. 그 클립이 사라지면 함께 사라진다. */
+  clipId: string
+  /** 원본 시간축 기준 시작·종료 (초) */
+  start: number
+  end: number
+  text: string
+}
+
+/** 프로젝트 전체에 한 벌만 둔다 (FR-036). */
+export interface SubtitleStyle {
+  /** 출력 높이 대비 글자 크기 비율 */
+  fontScale: number
+  color: string
+  background: 'outline' | 'box' | 'none'
+  backgroundOpacity: number
+  /** 아래에서부터의 비율 */
+  verticalPosition: number
+}
+
+export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
+  fontScale: 0.045,
+  color: '#FFFFFF',
+  background: 'outline',
+  backgroundOpacity: 0.6,
+  verticalPosition: 0.08,
+}
+
+/** 새로 넣는 자막의 기본 길이 */
+export const DEFAULT_SUBTITLE_SECONDS = 2
+export const MIN_SUBTITLE_SECONDS = 0.2
+export const MAX_SUBTITLE_LENGTH = 200

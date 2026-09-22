@@ -174,6 +174,23 @@ try {
     await totalText(),
   )
 
+  // ---------- 클립을 누른 지점으로 이동 ----------
+  await loadTimeline([{ bytes: clip10.bytes, name: `십초.${clip10.extension}`, type: clip10.mimeType }])
+  await page.locator('[data-testid="clip"]').scrollIntoViewIfNeeded()
+  const clipBox = await page.locator('[data-testid="clip"]').boundingBox()
+  const px = await pxPerSecond()
+  // 클립 안 6초 지점을 직접 누른다.
+  await page.mouse.click(clipBox.x + 6 * px, clipBox.y + clipBox.height / 2)
+  check(
+    '클립을 누르면 그 지점으로 재생헤드가 이동',
+    near(await playheadSeconds(), 6, 0.2),
+    `${(await playheadSeconds()).toFixed(2)}초`,
+  )
+  check(
+    '누른 클립이 선택됨',
+    (await page.getAttribute('[data-testid="clip"]', 'data-selected')) === 'true',
+  )
+
   // ---------- AC-006 / AC-007 트림 ----------
   await loadTimeline([{ bytes: clip10.bytes, name: `십초.${clip10.extension}`, type: clip10.mimeType }])
   await page.click('[data-testid="clip"]')

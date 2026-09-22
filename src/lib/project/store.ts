@@ -1,6 +1,19 @@
 import { create } from 'zustand'
-import type { MediaSource, RejectedFile, TimelineItem } from './types'
-import { timelineDuration } from './types'
+import type {
+  MediaSource,
+  RejectedFile,
+  Subtitle,
+  SubtitleStyle,
+  TimelineItem,
+} from './types'
+import {
+  DEFAULT_SUBTITLE_SECONDS,
+  DEFAULT_SUBTITLE_STYLE,
+  MIN_SUBTITLE_SECONDS,
+  timelineDuration,
+} from './types'
+import { segmentAt, sourceTimeAt, toSegments } from './playback'
+import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
 import {
   HISTORY_LIMIT,
   clampPlayhead,
@@ -26,9 +39,12 @@ interface ProjectState {
   playhead: number
   playing: boolean
 
+  subtitles: Subtitle[]
+  subtitleStyle: SubtitleStyle
+
   /** 되돌리기용 이전 상태들. 가장 최근이 배열 끝. */
-  past: TimelineItem[][]
-  future: TimelineItem[][]
+  past: Snapshot[]
+  future: Snapshot[]
 
   addImported: (sources: MediaSource[], items: TimelineItem[], rejected: RejectedFile[]) => void
   setImporting: (importing: boolean) => void
@@ -49,21 +65,34 @@ interface ProjectState {
   moveSelected: (delta: number) => void
   trim: (id: string, edge: TrimEdge, offsetInClip: number) => void
 
+  addSubtitle: (text?: string) => void
+  updateSubtitle: (id: string, patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end'>>) => void
+  removeSubtitle: (id: string) => void
+  setSubtitleStyle: (patch: Partial<SubtitleStyle>) => void
+
   undo: () => void
   redo: () => void
   reset: () => void
 }
 
+/** 되돌리기 한 칸. 타임라인과 자막은 함께 움직여야 한다. */
+interface Snapshot {
+  timeline: TimelineItem[]
+  subtitles: Subtitle[]
+}
+
 const EMPTY = {
   sources: [] as MediaSource[],
   timeline: [] as TimelineItem[],
+  subtitles: [] as Subtitle[],
+  subtitleStyle: DEFAULT_SUBTITLE_STYLE,
   rejected: [] as RejectedFile[],
   importing: false,
   selectedItemId: null,
   playhead: 0,
   playing: false,
-  past: [] as TimelineItem[][],
-  future: [] as TimelineItem[][],
+  past: [] as Snapshot[],
+  future: [] as Snapshot[],
 }
 
 export const useProject = create<ProjectState>((set, get) => {
@@ -74,18 +103,32 @@ export const useProject = create<ProjectState>((set, get) => {
    * 기록하는 방식은 분할·트림·순서 변경마다 되돌리기 규칙을 따로 짜야 해서
    * 틀릴 여지가 훨씬 크다.
    */
-  const commit = (next: TimelineItem[]) =>
-    set((state) => ({
-      past: [...state.past, state.timeline].slice(-HISTORY_LIMIT),
-      timeline: next,
-      future: [],
-      // 편집하는 동안 재생이 계속되면 화면과 타임라인이 어긋난다.
-      playing: false,
-      playhead: clampPlayhead(next, state.playhead),
-      selectedItemId: next.some((item) => item.id === state.selectedItemId)
-        ? state.selectedItemId
-        : null,
-    }))
+  const commit = (next: TimelineItem[], nextSubtitles?: Subtitle[]) =>
+    set((state) => {
+      const subtitles = pruneSubtitles(nextSubtitles ?? state.subtitles, next)
+      return {
+        past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
+          -HISTORY_LIMIT,
+        ),
+        timeline: next,
+        subtitles,
+        future: [],
+        // 편집하는 동안 재생이 계속되면 화면과 타임라인이 어긋난다.
+        playing: false,
+        playhead: clampPlayhead(next, state.playhead),
+        selectedItemId: next.some((item) => item.id === state.selectedItemId)
+          ? state.selectedItemId
+          : null,
+      }
+    })
+
+  /** 재생헤드가 놓인 클립과, 그 클립 원본 기준 시각을 돌려준다. */
+  const locate = () => {
+    const { timeline, playhead } = get()
+    const segment = segmentAt(toSegments(timeline), playhead)
+    if (!segment) return null
+    return { segment, sourceTime: sourceTimeAt(segment, playhead) }
+  }
 
   return {
     ...EMPTY,
@@ -93,7 +136,9 @@ export const useProject = create<ProjectState>((set, get) => {
     addImported: (sources, items, rejected) =>
       set((state) => ({
         sources: [...state.sources, ...sources],
-        past: [...state.past, state.timeline].slice(-HISTORY_LIMIT),
+        past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
+          -HISTORY_LIMIT,
+        ),
         timeline: [...state.timeline, ...items],
         future: [],
         rejected,
@@ -125,9 +170,13 @@ export const useProject = create<ProjectState>((set, get) => {
       })),
 
     split: () => {
-      const { timeline, playhead } = get()
-      const next = splitAt(timeline, playhead)
-      if (next) commit(next)
+      const { timeline, subtitles, playhead } = get()
+      const result = splitAt(timeline, playhead)
+      if (!result) return
+      commit(
+        result.items,
+        splitSubtitles(subtitles, result.originalId, result.leftId, result.rightId, result.cut),
+      )
     },
 
     insertBlank: (duration, color) => {
@@ -169,16 +218,62 @@ export const useProject = create<ProjectState>((set, get) => {
       if (next) commit(next)
     },
 
+    addSubtitle: (text = '') => {
+      const found = locate()
+      if (!found) return
+      const { segment, sourceTime } = found
+      const range = clipRange(segment.item)
+      const start = Math.min(sourceTime, range.end - MIN_SUBTITLE_SECONDS)
+      const end = Math.min(start + DEFAULT_SUBTITLE_SECONDS, range.end)
+      if (end - start < MIN_SUBTITLE_SECONDS) return
+
+      const subtitle: Subtitle = {
+        id: crypto.randomUUID(),
+        clipId: segment.item.id,
+        start,
+        end,
+        text,
+      }
+      commit(get().timeline, [...get().subtitles, subtitle])
+    },
+
+    updateSubtitle: (id, patch) => {
+      const { timeline, subtitles } = get()
+      const index = subtitles.findIndex((subtitle) => subtitle.id === id)
+      if (index === -1) return
+
+      const item = timeline.find((candidate) => candidate.id === subtitles[index].clipId)
+      if (!item) return
+
+      const next = [...subtitles]
+      next[index] = normalizeSubtitle({ ...subtitles[index], ...patch }, item)
+      commit(timeline, next)
+    },
+
+    removeSubtitle: (id) =>
+      commit(
+        get().timeline,
+        get().subtitles.filter((subtitle) => subtitle.id !== id),
+      ),
+
+    setSubtitleStyle: (patch) =>
+      set((state) => ({ subtitleStyle: { ...state.subtitleStyle, ...patch } })),
+
     undo: () =>
       set((state) => {
         const previous = state.past.at(-1)
         if (!previous) return state
         return {
           past: state.past.slice(0, -1),
-          timeline: previous,
-          future: [state.timeline, ...state.future].slice(0, HISTORY_LIMIT),
-          playhead: clampPlayhead(previous, state.playhead),
-          selectedItemId: previous.some((item) => item.id === state.selectedItemId)
+          timeline: previous.timeline,
+          subtitles: previous.subtitles,
+          future: [
+            { timeline: state.timeline, subtitles: state.subtitles },
+            ...state.future,
+          ].slice(0, HISTORY_LIMIT),
+          playing: false,
+          playhead: clampPlayhead(previous.timeline, state.playhead),
+          selectedItemId: previous.timeline.some((item) => item.id === state.selectedItemId)
             ? state.selectedItemId
             : null,
         }
@@ -189,11 +284,15 @@ export const useProject = create<ProjectState>((set, get) => {
         const [next, ...rest] = state.future
         if (!next) return state
         return {
-          past: [...state.past, state.timeline].slice(-HISTORY_LIMIT),
-          timeline: next,
+          past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
+            -HISTORY_LIMIT,
+          ),
+          timeline: next.timeline,
+          subtitles: next.subtitles,
           future: rest,
-          playhead: clampPlayhead(next, state.playhead),
-          selectedItemId: next.some((item) => item.id === state.selectedItemId)
+          playing: false,
+          playhead: clampPlayhead(next.timeline, state.playhead),
+          selectedItemId: next.timeline.some((item) => item.id === state.selectedItemId)
             ? state.selectedItemId
             : null,
         }

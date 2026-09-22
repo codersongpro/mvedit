@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { findSource, useProject } from '../lib/project/store'
 import { segmentAt, sourceTimeAt, toSegments } from '../lib/project/playback'
+import { subtitleAt } from '../lib/project/subtitles'
+import { SubtitleOverlay } from './SubtitleOverlay'
 import { timelineDuration } from '../lib/project/types'
 import { formatClock } from '../lib/format'
 
@@ -25,10 +27,16 @@ export function Preview() {
   const setPlaying = useProject((state) => state.setPlaying)
   const togglePlay = useProject((state) => state.togglePlay)
 
+  const subtitles = useProject((state) => state.subtitles)
+  const subtitleStyle = useProject((state) => state.subtitleStyle)
+
   const segments = useMemo(() => toSegments(timeline), [timeline])
   const total = timelineDuration(timeline)
   const current = segmentAt(segments, playhead)
   const currentSource = findSource(sources, current?.item.sourceId ?? null)
+  const currentSubtitle = current
+    ? subtitleAt(subtitles, current.item, sourceTimeAt(current, playhead))
+    : null
 
   const videoRefs = useRef(new Map<string, HTMLVideoElement>())
   const playheadRef = useRef(playhead)
@@ -74,6 +82,23 @@ export function Preview() {
     else video.pause()
   }, [current, playing, pauseOthers, setPlaying])
 
+  // 다음 클립을 미리 시작 지점에 맞춰 둔다.
+  //
+  // 넘어가는 순간에 비로소 탐색을 시작하면 그동안 화면이 멈춰 뚝 끊긴다.
+  // 같은 원본이 이어지는 경우(분할한 클립)는 탐색이 필요 없으므로 건드리지 않는다.
+  useEffect(() => {
+    if (!playing || !current) return
+    const next = segments[current.index + 1]
+    if (!next || next.item.type !== 'video') return
+    if (next.item.sourceId === current.item.sourceId) return
+
+    const video = videoRefs.current.get(next.item.sourceId ?? '')
+    if (!video) return
+    if (Math.abs(video.currentTime - next.item.inPoint) > SYNC_TOLERANCE) {
+      video.currentTime = next.item.inPoint
+    }
+  }, [current, playing, segments])
+
   // 재생 루프. 영상 구간은 video 요소의 시각을 따르고, 사진·빈 화면은
   // 실제 흐른 시간을 더한다. 영상 시각을 기준으로 삼아야 소리와 어긋나지 않는다.
   useEffect(() => {
@@ -109,7 +134,23 @@ export function Preview() {
           setPlaying(false)
           return
         }
-        next = segments[segment.index + 1].start
+
+        const following = segments[segment.index + 1]
+        next = following.start
+
+        // 리액트가 다시 그리기를 기다리지 않고 바로 넘긴다. 한 프레임이라도
+        // 늦으면 클립 경계에서 끊기는 것이 눈에 보인다.
+        if (following.item.type === 'video') {
+          const upcoming = videoRefs.current.get(following.item.sourceId ?? '')
+          if (upcoming) {
+            if (Math.abs(upcoming.currentTime - following.item.inPoint) > SYNC_TOLERANCE) {
+              upcoming.currentTime = following.item.inPoint
+            }
+            upcoming.muted = following.item.muted
+            upcoming.volume = Math.min(1, Math.max(0, following.item.volume))
+            void upcoming.play().catch(() => {})
+          }
+        }
       }
 
       setPlayhead(next)
@@ -130,6 +171,7 @@ export function Preview() {
         data-testid="preview"
         data-active-kind={kind}
         data-active-source={currentSource?.fileName ?? ''}
+        style={{ containerType: 'size' }}
         className="relative aspect-video w-full overflow-hidden rounded-xl bg-black"
       >
         {sources
@@ -166,6 +208,10 @@ export function Preview() {
             className="absolute inset-0"
             style={{ backgroundColor: current?.item.color }}
           />
+        )}
+
+        {currentSubtitle && (
+          <SubtitleOverlay text={currentSubtitle.text} style={subtitleStyle} />
         )}
       </div>
 
