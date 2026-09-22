@@ -16,7 +16,8 @@ import {
 } from 'mediabunny'
 import { toSegments, type Segment } from '../project/playback'
 import { subtitleAt } from '../project/subtitles'
-import type { Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
+import type { ExportSetting, Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
+import { computeOutputSize, estimateVideoBitrate, AUDIO_BITRATE } from './outputSize'
 import { drawSubtitle } from './drawSubtitle'
 import { toTimedSubtitles } from './srt'
 import { ExportError, toExportError } from './export'
@@ -53,6 +54,7 @@ export interface ComposeInput {
   kinds: Map<string, 'video' | 'image'>
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
+  setting: ExportSetting
   profile: ExportCodecProfile
 }
 
@@ -100,7 +102,8 @@ export async function composeTimeline(
       return created
     }
 
-    const { width, height } = await resolveOutputSize(segments, openInput)
+    const sourceSize = await resolveSourceSize(segments, openInput)
+    const { width, height } = computeOutputSize(input.setting, sourceSize)
     const audioFormat = await resolveAudioFormat(segments, openInput)
 
     // 워커에는 document 가 없다. 화면에 붙지 않는 캔버스를 쓴다.
@@ -116,13 +119,13 @@ export async function composeTimeline(
 
     const videoSource = new CanvasSource(canvas, {
       codec: input.profile.videoCodec,
-      bitrate: estimateBitrate(width, height),
+      bitrate: estimateVideoBitrate(input.setting, { width, height }),
     })
-    output.addVideoTrack(videoSource, { frameRate: 30 })
+    output.addVideoTrack(videoSource, { frameRate: input.setting.fps })
 
     const audioSource = new AudioSampleSource({
       codec: input.profile.audioCodec,
-      bitrate: 128_000,
+      bitrate: AUDIO_BITRATE,
     })
     output.addAudioTrack(audioSource)
 
@@ -172,13 +175,10 @@ export async function composeTimeline(
 }
 
 /**
- * 출력 크기를 정한다.
- *
- * 첫 영상의 보이는 크기를 따르고, 영상이 없으면 720p 로 둔다. 화면비·해상도를
- * 사용자가 고르는 기능은 다음 단계에서 붙는다. 인코더가 홀수 크기를 거부하는
- * 경우가 있어 짝수로 맞춘다.
+ * '원본 유지' 화면비의 기준이 되는 첫 영상의 보이는 크기.
+ * 영상이 없으면 16:9 로 본다.
  */
-async function resolveOutputSize(
+async function resolveSourceSize(
   segments: Segment[],
   openInput: (sourceId: string) => Input,
 ): Promise<{ width: number; height: number }> {
@@ -186,7 +186,7 @@ async function resolveOutputSize(
     if (segment.item.type !== 'video' || !segment.item.sourceId) continue
     const track = await openInput(segment.item.sourceId).getPrimaryVideoTrack()
     if (!track) continue
-    return { width: even(track.displayWidth), height: even(track.displayHeight) }
+    return { width: track.displayWidth, height: track.displayHeight }
   }
   return { width: 1280, height: 720 }
 }
@@ -206,15 +206,6 @@ async function resolveAudioFormat(
     }
   }
   return { sampleRate: FALLBACK_SAMPLE_RATE, numberOfChannels: FALLBACK_CHANNELS }
-}
-
-function even(value: number): number {
-  return Math.max(2, Math.round(value / 2) * 2)
-}
-
-function estimateBitrate(width: number, height: number): number {
-  // 픽셀 수에 비례시킨 대략값. 목표 용량 지정은 다음 단계에서 다룬다.
-  return Math.round(Math.min(12_000_000, Math.max(800_000, width * height * 0.12)))
 }
 
 interface RenderContext {
@@ -297,8 +288,8 @@ async function drawVideoFrames({
 
     ctx.context.fillStyle = '#000000'
     ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-    // 화면비가 달라도 잘리지 않게 여백을 둔다. 회전도 함께 처리된다.
-    sample.drawWithFit(ctx.context, { fit: 'contain' })
+    // 여백 채우기(contain) 또는 잘라 채우기(cover). 회전도 함께 처리된다 (FR-015).
+    sample.drawWithFit(ctx.context, { fit: ctx.input.setting.fitMode })
     sample.close()
 
     paintSubtitle(ctx, segment, item.inPoint + offset)
@@ -337,7 +328,9 @@ async function renderStillSegment(ctx: RenderContext): Promise<void> {
     ctx.context.fillStyle = item.type === 'blank' ? item.color : '#000000'
     ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
 
-    if (bitmap) drawContain(ctx.context, bitmap, ctx.canvas.width, ctx.canvas.height)
+    if (bitmap) {
+      drawWithFit(ctx.context, bitmap, ctx.canvas.width, ctx.canvas.height, ctx.input.setting.fitMode)
+    }
     paintSubtitle(ctx, segment, offset)
 
     await ctx.videoSource.add(segment.start + offset, frameDuration)
@@ -350,13 +343,18 @@ async function renderStillSegment(ctx: RenderContext): Promise<void> {
   await writeSilence(ctx.audioSource, ctx.audioFormat, segment.start, length)
 }
 
-function drawContain(
+/** 사진을 여백 채우기 또는 잘라 채우기로 그린다. 영상 쪽 drawWithFit 과 같은 규칙이다. */
+function drawWithFit(
   context: OffscreenCanvasRenderingContext2D,
   bitmap: ImageBitmap,
   width: number,
   height: number,
+  fit: 'contain' | 'cover',
 ): void {
-  const scale = Math.min(width / bitmap.width, height / bitmap.height)
+  const scale =
+    fit === 'cover'
+      ? Math.max(width / bitmap.width, height / bitmap.height)
+      : Math.min(width / bitmap.width, height / bitmap.height)
   const drawWidth = bitmap.width * scale
   const drawHeight = bitmap.height * scale
   context.drawImage(

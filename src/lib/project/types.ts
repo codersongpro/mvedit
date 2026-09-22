@@ -110,3 +110,28 @@ export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
 export const DEFAULT_SUBTITLE_SECONDS = 2
 export const MIN_SUBTITLE_SECONDS = 0.2
 export const MAX_SUBTITLE_LENGTH = 200
+
+/** 출력 설정 (PRD 8절, FR-014~017) */
+export type AspectRatio = '16:9' | '9:16' | '1:1' | 'source'
+export type FitMode = 'contain' | 'cover'
+export type Resolution = 2160 | 1440 | 1080 | 720 | 480
+export type QualityLevel = 'high' | 'medium' | 'low'
+
+export interface ExportSetting {
+  aspectRatio: AspectRatio
+  /** contain = 여백 채우기, cover = 잘라 채우기 */
+  fitMode: FitMode
+  /** 출력 세로 해상도 */
+  resolution: Resolution
+  quality: QualityLevel
+  /** 초당 프레임. 지금은 30으로 고정하고 설정 UI 는 두지 않는다. */
+  fps: number
+}
+
+export const DEFAULT_EXPORT_SETTING: ExportSetting = {
+  aspectRatio: 'source',
+  fitMode: 'contain',
+  resolution: 1080,
+  quality: 'medium',
+  fps: 30,
+}

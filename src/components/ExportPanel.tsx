@@ -8,6 +8,7 @@ import {
   type ExportWorkerResponse,
 } from '../lib/media/exportTypes'
 import { formatBytes } from '../lib/format'
+import { ExportSettings } from './ExportSettings'
 
 type Phase =
   | { status: 'idle' }
@@ -34,6 +35,7 @@ export function ExportPanel() {
   const timeline = useProject((state) => state.timeline)
   const subtitles = useProject((state) => state.subtitles)
   const subtitleStyle = useProject((state) => state.subtitleStyle)
+  const setting = useProject((state) => state.exportSetting)
   const [profile, setProfile] = useState<ExportCodecProfile | null>(null)
   const [phase, setPhase] = useState<Phase>({ status: 'idle' })
 
@@ -128,11 +130,12 @@ export function ExportPanel() {
         kinds: sources.map((source) => [source.id, source.kind] as [string, 'video' | 'image']),
         subtitles,
         subtitleStyle,
+        setting,
         profile,
       },
     }
     worker.postMessage(request)
-  }, [timeline, sources, subtitles, subtitleStyle, profile, exportBaseName])
+  }, [timeline, sources, subtitles, subtitleStyle, setting, profile, exportBaseName])
 
   const cancelExport = useCallback(() => {
     const request: ExportWorkerRequest = { type: 'cancel' }
@@ -143,6 +146,8 @@ export function ExportPanel() {
 
   return (
     <div className="flex flex-col gap-3">
+      <ExportSettings />
+
       {profile && profile.id !== MP4_PROFILE.id && (
         <p className="rounded-lg bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300">
           이 브라우저는 MP4(H.264) 인코딩을 지원하지 않아 시험용으로 {profile.label} 형식으로

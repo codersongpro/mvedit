@@ -10,15 +10,14 @@
  *
  *   npm run build && npm run test:compose
  */
-import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { startPreviewServer } from './server.mjs'
 import zlib from 'node:zlib'
 
-const PORT = Number(process.env.PORT ?? 4190)
-const BASE_URL = `http://127.0.0.1:${PORT}/`
+const { baseUrl: BASE_URL, stop: stopServer } = await startPreviewServer()
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const projectRoot = join(here, '..')
@@ -71,28 +70,10 @@ function check(name, passed, detail = '') {
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
-async function waitForServer(url, attempts = 40) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      if ((await fetch(url)).ok) return
-    } catch {
-      /* 아직 안 떴다 */
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`미리보기 서버가 ${url} 에서 뜨지 않았습니다.`)
-}
-
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  cwd: projectRoot,
-  stdio: 'ignore',
-})
-
 let browser
 let exitCode = 0
 
 try {
-  await waitForServer(BASE_URL)
   const { chromium } = await loadPlaywright()
   const bundleSource = await readFile(bundlePath, 'utf8')
   const helpers = await readFile(join(here, 'fixture.js'), 'utf8')
@@ -133,7 +114,9 @@ try {
     await page.evaluate((list) => {
       const transfer = new DataTransfer()
       for (const entry of list) {
-        transfer.items.add(new File([new Uint8Array(entry.bytes)], entry.name, { type: entry.type }))
+        transfer.items.add(
+          new File([new Uint8Array(entry.bytes)], entry.name, { type: entry.type }),
+        )
       }
       const input = document.querySelector('[data-testid="file-input"]')
       input.files = transfer.files
@@ -154,7 +137,9 @@ try {
     await page.mouse.click(ruler.x + seconds * (await scale()), ruler.y + ruler.height / 2)
     await page.waitForFunction(
       (target) =>
-        Math.abs(Number(document.querySelector('[data-testid="playhead"]').dataset.seconds) - target) < 0.2,
+        Math.abs(
+          Number(document.querySelector('[data-testid="playhead"]').dataset.seconds) - target,
+        ) < 0.2,
       seconds,
     )
   }
@@ -228,7 +213,8 @@ try {
   check('AC-023 오디오 트랙 존재', mixedInfo.hasAudio, String(mixedInfo.audioCodec))
   check(
     'AC-013 오디오 길이가 영상 길이와 일치',
-    mixedInfo.audioDuration !== null && Math.abs(mixedInfo.audioDuration - mixedInfo.duration) <= 0.3,
+    mixedInfo.audioDuration !== null &&
+      Math.abs(mixedInfo.audioDuration - mixedInfo.duration) <= 0.3,
     `오디오 ${mixedInfo.audioDuration?.toFixed(2)}초 / 영상 ${mixedInfo.duration.toFixed(2)}초`,
   )
   check('AC-023 타임스탬프 단조 증가', mixedInfo.monotonic)
@@ -250,7 +236,9 @@ try {
   )
 
   // ---------- AC-043 / AC-044 자막 ----------
-  await loadProject([{ bytes: clip.bytes, name: `자막영상.${clip.extension}`, type: clip.mimeType }])
+  await loadProject([
+    { bytes: clip.bytes, name: `자막영상.${clip.extension}`, type: clip.mimeType },
+  ])
   await seekTo(1)
   await page.click('[data-testid="add-subtitle"]')
   await page.fill('[data-testid="subtitle-text"]', '자막 확인')
@@ -264,11 +252,19 @@ try {
     subtitled.videoName?.startsWith('자막영상_cutcap.') === true,
     String(subtitled.videoName),
   )
-  check('자막 파일 이름이 .srt', subtitled.srtName?.endsWith('.srt') === true, String(subtitled.srtName))
+  check(
+    '자막 파일 이름이 .srt',
+    subtitled.srtName?.endsWith('.srt') === true,
+    String(subtitled.srtName),
+  )
 
   const srt = await readFile(subtitled.srtPath, 'utf8')
   console.log('  srt:', JSON.stringify(srt))
-  check('AC-044 SRT 번호와 내용', srt.startsWith('1\n') && srt.includes('자막 확인'), srt.split('\n')[0])
+  check(
+    'AC-044 SRT 번호와 내용',
+    srt.startsWith('1\n') && srt.includes('자막 확인'),
+    srt.split('\n')[0],
+  )
   check(
     'AC-044 SRT 타임코드가 자막 시점과 일치 (1~3초)',
     /00:00:01,0\d\d --> 00:00:03,0\d\d/.test(srt),
@@ -289,6 +285,128 @@ try {
     'AC-043 자막 구간 하단에 글자가 새겨졌다',
     burnedCheck.withSubtitle > burnedCheck.withoutSubtitle * 2 + 200,
     `자막 구간 ${burnedCheck.withSubtitle} vs 비자막 구간 ${burnedCheck.withoutSubtitle} (밝은 픽셀 수)`,
+  )
+
+  // ---------- AC-016~019 출력 설정 ----------
+  // 320×240(4:3) 영상으로 시작한다.
+  await loadProject([
+    { bytes: clip.bytes, name: `설정영상.${clip.extension}`, type: clip.mimeType },
+  ])
+  await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()
+
+  const outputSize = () => page.locator('[data-testid="output-size"]').innerText()
+  const estimated = () => page.locator('[data-testid="estimated-size"]').innerText()
+
+  // FR-016 기본 해상도는 원본을 키우지 않는다. 240p 원본은 목록의 최솟값인
+  // 480p 가 되고, 1080p 기본값처럼 용량만 커지는 일이 없어야 한다.
+  check(
+    'FR-016 기본 해상도가 원본을 따라간다 (240p 원본 → 480p)',
+    (await page.locator('[data-testid="resolution-480"]').getAttribute('aria-pressed')) === 'true',
+    await outputSize(),
+  )
+
+  await page.click('[data-testid="resolution-480"]')
+  check('AC-018 480p 선택 시 세로 480', (await outputSize()).endsWith('×480'), await outputSize())
+  check(
+    'AC-016 원본 그대로는 4:3 비율 유지',
+    (await outputSize()) === '640×480',
+    await outputSize(),
+  )
+
+  // 480p 아래로는 내려갈 수 없으므로 기본값에서 경고가 보이면 안 된다.
+  // 반대로 사용자가 굳이 1080p 를 고르면 용량만 커진다고 알려야 한다.
+  check(
+    'FR-017 기본값에서는 확대 경고가 없다',
+    (await page.locator('[data-testid="upscale-warning"]').count()) === 0,
+  )
+  await page.click('[data-testid="resolution-1080"]')
+  check(
+    'FR-017 원본보다 크게 고르면 경고가 뜬다',
+    (await page.locator('[data-testid="upscale-warning"]').count()) === 1,
+    (await page.locator('[data-testid="upscale-warning"]').count())
+      ? await page.locator('[data-testid="upscale-warning"]').innerText()
+      : '경고 없음',
+  )
+  await page.click('[data-testid="resolution-480"]')
+
+  await page.click('[data-testid="aspect-9:16"]')
+  check('AC-016 9:16 선택 시 세로로 길어짐', (await outputSize()) === '270×480', await outputSize())
+  await page.click('[data-testid="aspect-1:1"]')
+  check('AC-016 1:1 선택 시 정사각', (await outputSize()) === '480×480', await outputSize())
+  await page.click('[data-testid="aspect-16:9"]')
+  check('AC-016 16:9 선택 시 854×480', (await outputSize()) === '854×480', await outputSize())
+
+  // AC-019 화질을 바꾸면 예상 용량이 즉시 바뀐다
+  await page.click('[data-testid="quality-high"]')
+  const highText = await estimated()
+  await page.click('[data-testid="quality-low"]')
+  const lowText = await estimated()
+  const toBytes = (text) => {
+    const [, value, unit] = text.match(/([\d.]+)\s*(B|KB|MB|GB)/) ?? []
+    const scale = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3 }[unit] ?? 1
+    return Number(value) * scale
+  }
+  check(
+    'AC-019 화질을 낮추면 예상 용량이 줄어든다',
+    toBytes(lowText) < toBytes(highText),
+    `높음 ${highText} / 낮음 ${lowText}`,
+  )
+
+  // AC-018 실제 결과가 고른 해상도로 나온다 (9:16 + 잘라 채우기)
+  await page.click('[data-testid="aspect-9:16"]')
+  await page.click('[data-testid="fit-cover"]')
+  await page.click('[data-testid="quality-medium"]')
+  const expectedSize = await outputSize()
+  const expectedBytes = toBytes(await estimated())
+
+  const configured = await exportAndSave('configured')
+  const configuredInfo = await inspect(configured.videoPath, clip.mimeType)
+  check(
+    'AC-016/018 결과 해상도가 설정과 일치',
+    `${configuredInfo.width}×${configuredInfo.height}` === expectedSize,
+    `${configuredInfo.width}×${configuredInfo.height} (설정 ${expectedSize})`,
+  )
+
+  // 예상 용량은 상한이다. 인코더는 장면이 단순하면 요청한 비트레이트를
+  // 다 쓰지 않으므로 결과가 더 작게 나온다. 사용자에게 중요한 보장은
+  // "예상보다 커지지 않는다" 쪽이다.
+  const { size: actualBytes } = await stat(configured.videoPath)
+  check(
+    'AC-019 실제 용량이 예상값을 넘지 않는다',
+    actualBytes <= expectedBytes * 1.1,
+    `실제 ${(actualBytes / 1024).toFixed(0)}KB / 예상 ${(expectedBytes / 1024).toFixed(0)}KB`,
+  )
+  check('AC-019 결과 파일이 비어 있지 않다', actualBytes > 1024, `${actualBytes} B`)
+
+  // AC-017 여백 채우기는 위아래에 검은 띠가 생기고, 잘라 채우기는 없다
+  const letterbox = await measureLetterbox(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile(configured.videoPath),
+    clip.mimeType,
+  )
+  check(
+    'AC-017 잘라 채우기는 여백 없음',
+    letterbox.darkRows <= 2,
+    `위쪽 어두운 줄 ${letterbox.darkRows}개`,
+  )
+
+  await page.click('[data-testid="fit-contain"]')
+  const contained = await exportAndSave('contained')
+  const containedBox = await measureLetterbox(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile(contained.videoPath),
+    clip.mimeType,
+  )
+  check(
+    'AC-017 여백 채우기는 위아래에 검은 여백',
+    containedBox.darkRows > 20,
+    `위쪽 어두운 줄 ${containedBox.darkRows}개`,
   )
 
   // ---------- AC-024 취소 ----------
@@ -321,14 +439,63 @@ try {
   exitCode = 1
 } finally {
   await browser?.close()
-  server.kill()
+  stopServer()
+}
+
+/**
+ * 위쪽에서 몇 줄이 거의 검은색인지 센다. 여백 채우기면 띠가 생긴다.
+ */
+async function measureLetterbox(context, baseUrl, installHelpers, bundleSource, bytes, mimeType) {
+  const page = await context.newPage()
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' })
+  await installHelpers(page)
+  const result = await page.evaluate(
+    async ([bundle, data, mime]) => {
+      const url = URL.createObjectURL(new Blob([bundle], { type: 'text/javascript' }))
+      const mb = await import(url)
+      const blob = new Blob([new Uint8Array(data)], { type: mime })
+      const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS })
+      const track = await input.getPrimaryVideoTrack()
+      const sink = new mb.VideoSampleSink(track)
+      const sample = await sink.getSample(1)
+      const canvas = document.createElement('canvas')
+      canvas.width = sample.displayWidth
+      canvas.height = sample.displayHeight
+      const ctx = canvas.getContext('2d')
+      sample.draw(ctx, 0, 0)
+      sample.close()
+
+      let darkRows = 0
+      for (let y = 0; y < Math.floor(canvas.height / 2); y += 1) {
+        const row = ctx.getImageData(0, y, canvas.width, 1).data
+        let bright = 0
+        for (let i = 0; i < row.length; i += 4) {
+          if (row[i] > 24 || row[i + 1] > 24 || row[i + 2] > 24) bright += 1
+        }
+        if (bright > canvas.width * 0.02) break
+        darkRows += 1
+      }
+      input.dispose()
+      return { darkRows, width: canvas.width, height: canvas.height }
+    },
+    [bundleSource, Array.from(bytes), mimeType],
+  )
+  await page.close()
+  return result
 }
 
 /**
  * 자막이 실제로 픽셀에 새겨졌는지 본다.
  * 자막 구간과 비자막 구간의 하단 1/4 영역에서 밝은 픽셀 수를 센다.
  */
-async function inspectBurnedSubtitle(context, baseUrl, installHelpers, bundleSource, bytes, mimeType) {
+async function inspectBurnedSubtitle(
+  context,
+  baseUrl,
+  installHelpers,
+  bundleSource,
+  bytes,
+  mimeType,
+) {
   const page = await context.newPage()
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' })
   await installHelpers(page)

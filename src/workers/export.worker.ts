@@ -34,6 +34,7 @@ self.onmessage = async (event: MessageEvent<ExportWorkerRequest>) => {
         kinds: new Map(job.kinds),
         subtitles: job.subtitles,
         subtitleStyle: job.subtitleStyle,
+        setting: job.setting,
         profile: job.profile,
       },
       {

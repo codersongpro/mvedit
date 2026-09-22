@@ -1,5 +1,5 @@
 import type { AudioCodec, VideoCodec } from 'mediabunny'
-import type { Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
+import type { ExportSetting, Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
 
 /**
  * 출력 코덱 조합.
@@ -65,6 +65,7 @@ export interface ExportJob {
   kinds: Array<[string, 'video' | 'image']>
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
+  setting: ExportSetting
   profile: ExportCodecProfile
 }
 

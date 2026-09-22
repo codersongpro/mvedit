@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  ExportSetting,
   MediaSource,
   RejectedFile,
   Subtitle,
@@ -7,11 +8,13 @@ import type {
   TimelineItem,
 } from './types'
 import {
+  DEFAULT_EXPORT_SETTING,
   DEFAULT_SUBTITLE_SECONDS,
   DEFAULT_SUBTITLE_STYLE,
   MIN_SUBTITLE_SECONDS,
   timelineDuration,
 } from './types'
+import { fitResolution } from '../media/outputSize'
 import { segmentAt, sourceTimeAt, toSegments } from './playback'
 import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
 import {
@@ -42,6 +45,7 @@ interface ProjectState {
 
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
+  exportSetting: ExportSetting
 
   /** 되돌리기용 이전 상태들. 가장 최근이 배열 끝. */
   past: Snapshot[]
@@ -71,6 +75,7 @@ interface ProjectState {
   updateSubtitle: (id: string, patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end'>>) => void
   removeSubtitle: (id: string) => void
   setSubtitleStyle: (patch: Partial<SubtitleStyle>) => void
+  setExportSetting: (patch: Partial<ExportSetting>) => void
 
   undo: () => void
   redo: () => void
@@ -88,6 +93,7 @@ const EMPTY = {
   timeline: [] as TimelineItem[],
   subtitles: [] as Subtitle[],
   subtitleStyle: DEFAULT_SUBTITLE_STYLE,
+  exportSetting: DEFAULT_EXPORT_SETTING,
   rejected: [] as RejectedFile[],
   importing: false,
   selectedItemId: null,
@@ -96,6 +102,25 @@ const EMPTY = {
   playing: false,
   past: [] as Snapshot[],
   future: [] as Snapshot[],
+}
+
+/**
+ * 첫 영상을 넣을 때 기본 해상도를 원본에 맞춘다.
+ *
+ * 두 번째 영상부터는 건드리지 않는다. 사용자가 이미 설정을 봤을 수 있고,
+ * 영상을 추가할 때마다 해상도가 바뀌면 이유를 알 수 없는 변화가 된다.
+ */
+function defaultSettingFor(
+  state: { sources: MediaSource[]; exportSetting: ExportSetting },
+  incoming: MediaSource[],
+): ExportSetting {
+  if (state.sources.some((source) => source.kind === 'video')) return state.exportSetting
+  const first = incoming.find((source) => source.kind === 'video')
+  if (!first) return state.exportSetting
+  return {
+    ...state.exportSetting,
+    resolution: fitResolution(first.displayHeight),
+  }
 }
 
 export const useProject = create<ProjectState>((set, get) => {
@@ -146,6 +171,7 @@ export const useProject = create<ProjectState>((set, get) => {
         future: [],
         rejected,
         importing: false,
+        exportSetting: defaultSettingFor(state, sources),
       })),
 
     setImporting: (importing) => set({ importing }),
@@ -266,6 +292,10 @@ export const useProject = create<ProjectState>((set, get) => {
 
     setSubtitleStyle: (patch) =>
       set((state) => ({ subtitleStyle: { ...state.subtitleStyle, ...patch } })),
+
+    // 출력 설정은 편집 내용이 아니므로 되돌리기 기록에 넣지 않는다.
+    setExportSetting: (patch) =>
+      set((state) => ({ exportSetting: { ...state.exportSetting, ...patch } })),
 
     undo: () =>
       set((state) => {

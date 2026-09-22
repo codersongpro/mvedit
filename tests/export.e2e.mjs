@@ -10,19 +10,25 @@
  *
  *   npm run build && npm run test:e2e
  */
-import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { startPreviewServer } from './server.mjs'
 
-const PORT = Number(process.env.PORT ?? 4183)
-const BASE_URL = `http://127.0.0.1:${PORT}/`
+const { baseUrl: BASE_URL, stop: stopServer } = await startPreviewServer()
 const FIXTURE = { widthPx: 320, heightPx: 240, durationSec: 3, fps: 30 }
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const projectRoot = join(here, '..')
-const bundlePath = join(projectRoot, 'node_modules', 'mediabunny', 'dist', 'bundles', 'mediabunny.min.mjs')
+const bundlePath = join(
+  projectRoot,
+  'node_modules',
+  'mediabunny',
+  'dist',
+  'bundles',
+  'mediabunny.min.mjs',
+)
 
 async function loadPlaywright() {
   try {
@@ -39,29 +45,10 @@ function check(name, passed, detail = '') {
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
-async function waitForServer(url, attempts = 40) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      if ((await fetch(url)).ok) return
-    } catch {
-      /* 서버가 아직 안 떴다 */
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`미리보기 서버가 ${url} 에서 뜨지 않았습니다.`)
-}
-
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  cwd: projectRoot,
-  stdio: 'ignore',
-})
-
 let browser
 let exitCode = 0
 
 try {
-  await waitForServer(BASE_URL)
-
   const { chromium } = await loadPlaywright()
   const bundleSource = await readFile(bundlePath, 'utf8')
   const helpers = await readFile(join(here, 'fixture.js'), 'utf8')
@@ -93,7 +80,8 @@ try {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
     await installHelpers(page)
     const fixture = await page.evaluate(
-      ([bundle, options]) => globalThis.__helpers.buildFixture({ bundleSource: bundle, ...options }),
+      ([bundle, options]) =>
+        globalThis.__helpers.buildFixture({ bundleSource: bundle, ...options }),
       [bundleSource, { ...FIXTURE, rotation }],
     )
     const fixturePath = join(workDir, `fixture-${rotation}.${fixture.extension}`)
@@ -107,8 +95,12 @@ try {
     await page.waitForSelector('[data-testid="clip"]', { timeout: 20_000 })
 
     // 회전된 영상은 가로·세로가 바뀌어 보이는 게 정상이다.
-    const expectedW = rotation % 180 === 0 ? FIXTURE.widthPx : FIXTURE.heightPx
-    const expectedH = rotation % 180 === 0 ? FIXTURE.heightPx : FIXTURE.widthPx
+    const shownW = rotation % 180 === 0 ? FIXTURE.widthPx : FIXTURE.heightPx
+    const shownH = rotation % 180 === 0 ? FIXTURE.heightPx : FIXTURE.widthPx
+    // 기본 해상도는 원본을 따라가되 목록의 최솟값이 480p 다 (fitResolution).
+    // 320×240 원본은 480p 로 올라가지만 비율은 그대로 유지돼야 한다.
+    const expectedH = 480
+    const expectedW = Math.round((expectedH * shownW) / shownH / 2) * 2
 
     check(
       `[${label}] 타임라인에 클립 1개`,
@@ -139,14 +131,19 @@ try {
     )
     await verifier.close()
 
-    console.log(`[${label}] 결과:`, JSON.stringify(result))
+    // audioEnergy 는 표본별 배열이라 로그를 덮어버린다.
+    console.log(`[${label}] 결과:`, JSON.stringify({ ...result, audioEnergy: undefined }))
 
     const durationDelta = Math.abs(result.duration - FIXTURE.durationSec)
-    check(`[${label}] 길이 오차 ±0.1초 이내`, durationDelta <= 0.1, `${durationDelta.toFixed(3)}초 차이`)
     check(
-      `[${label}] 보이는 크기 유지`,
+      `[${label}] 길이 오차 ±0.1초 이내`,
+      durationDelta <= 0.1,
+      `${durationDelta.toFixed(3)}초 차이`,
+    )
+    check(
+      `[${label}] 보이는 비율 유지`,
       result.width === expectedW && result.height === expectedH,
-      `${result.width}×${result.height} (기대 ${expectedW}×${expectedH})`,
+      `${result.width}×${result.height} (기대 ${expectedW}×${expectedH}, 원본 ${shownW}×${shownH})`,
     )
     check(`[${label}] 오디오 트랙 존재`, result.hasAudio, String(result.audioCodec))
     check(`[${label}] 타임스탬프 단조 증가`, result.monotonic)
@@ -175,7 +172,7 @@ try {
   exitCode = 1
 } finally {
   await browser?.close()
-  server.kill()
+  stopServer()
 }
 
 const failed = checks.filter((c) => !c.passed)
