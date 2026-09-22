@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { findSource, useProject } from '../lib/project/store'
+import { useProject } from '../lib/project/store'
 import { pickSupportedProfile } from '../lib/media/codecSupport'
 import {
   MP4_PROFILE,
@@ -12,7 +12,15 @@ import { formatBytes } from '../lib/format'
 type Phase =
   | { status: 'idle' }
   | { status: 'exporting'; progress: number }
-  | { status: 'done'; url: string; fileName: string; size: number; elapsedMs: number }
+  | {
+      status: 'done'
+      url: string
+      fileName: string
+      size: number
+      elapsedMs: number
+      srtUrl: string | null
+      srtFileName: string
+    }
   | { status: 'error'; message: string }
 
 function baseName(fileName: string): string {
@@ -20,24 +28,24 @@ function baseName(fileName: string): string {
   return dot > 0 ? fileName.slice(0, dot) : fileName
 }
 
-/**
- * 타임라인의 첫 영상 클립 하나를 내보낸다.
- *
- * 타임라인 전체를 하나로 합쳐 내보내는 것은 이후 단계에서 붙인다.
- * 지금은 인코딩 경로가 계속 살아 있는지 확인하는 용도다.
- */
+/** 타임라인 전체를 하나의 영상으로 합쳐 내보낸다 (FR-020, FR-021, FR-037, FR-038). */
 export function ExportPanel() {
   const sources = useProject((state) => state.sources)
   const timeline = useProject((state) => state.timeline)
+  const subtitles = useProject((state) => state.subtitles)
+  const subtitleStyle = useProject((state) => state.subtitleStyle)
   const [profile, setProfile] = useState<ExportCodecProfile | null>(null)
   const [phase, setPhase] = useState<Phase>({ status: 'idle' })
 
+  // 결과 파일 이름은 첫 원본에서 따온다. 프로젝트 이름은 아직 없다.
+  const exportBaseName =
+    sources.find((source) => source.kind === 'video')?.fileName ??
+    sources[0]?.fileName ??
+    '영상'
+
   const workerRef = useRef<Worker | null>(null)
   const startedAtRef = useRef(0)
-  const objectUrlRef = useRef<string | null>(null)
-
-  const firstVideoItem = timeline.find((item) => item.type === 'video') ?? null
-  const firstVideoSource = findSource(sources, firstVideoItem?.sourceId ?? null)
+  const objectUrlRef = useRef<string[]>([])
 
   useEffect(() => {
     void pickSupportedProfile().then(setProfile)
@@ -47,18 +55,27 @@ export function ExportPanel() {
   useEffect(
     () => () => {
       workerRef.current?.terminate()
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+      for (const url of objectUrlRef.current) URL.revokeObjectURL(url)
     },
     [],
   )
 
-  const startExport = useCallback(() => {
-    if (!firstVideoSource || !profile) return
+  /**
+   * 내보내는 중 창을 닫으려 하면 경고한다 (FR-030, AC-034).
+   * 인코딩은 다시 시작하면 처음부터라 실수로 닫으면 시간을 통째로 잃는다.
+   */
+  useEffect(() => {
+    if (phase.status !== 'exporting') return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [phase.status])
 
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current)
-      objectUrlRef.current = null
-    }
+  const startExport = useCallback(() => {
+    if (timeline.length === 0 || !profile) return
+
+    for (const url of objectUrlRef.current) URL.revokeObjectURL(url)
+    objectUrlRef.current = []
 
     const worker = new Worker(new URL('../workers/export.worker.ts', import.meta.url), {
       type: 'module',
@@ -77,13 +94,23 @@ export function ExportPanel() {
       if (message.type === 'done') {
         const blob = new Blob([message.buffer], { type: message.mimeType })
         const url = URL.createObjectURL(blob)
-        objectUrlRef.current = url
+        objectUrlRef.current.push(url)
+
+        let srtUrl: string | null = null
+        if (message.srt) {
+          srtUrl = URL.createObjectURL(new Blob([message.srt], { type: 'text/plain' }))
+          objectUrlRef.current.push(srtUrl)
+        }
+
+        const name = baseName(exportBaseName)
         setPhase({
           status: 'done',
           url,
-          fileName: `${baseName(firstVideoSource.fileName)}_cutcap.${message.fileExtension}`,
+          fileName: `${name}_cutcap.${message.fileExtension}`,
           size: blob.size,
           elapsedMs: performance.now() - startedAtRef.current,
+          srtUrl,
+          srtFileName: `${name}_cutcap.srt`,
         })
       } else {
         setPhase({ status: 'error', message: message.message })
@@ -93,16 +120,26 @@ export function ExportPanel() {
       workerRef.current = null
     }
 
-    const request: ExportWorkerRequest = { type: 'start', file: firstVideoSource.file, profile }
+    const request: ExportWorkerRequest = {
+      type: 'start',
+      job: {
+        timeline,
+        files: sources.map((source) => [source.id, source.file] as [string, File]),
+        kinds: sources.map((source) => [source.id, source.kind] as [string, 'video' | 'image']),
+        subtitles,
+        subtitleStyle,
+        profile,
+      },
+    }
     worker.postMessage(request)
-  }, [firstVideoSource, profile])
+  }, [timeline, sources, subtitles, subtitleStyle, profile, exportBaseName])
 
   const cancelExport = useCallback(() => {
     const request: ExportWorkerRequest = { type: 'cancel' }
     workerRef.current?.postMessage(request)
   }, [])
 
-  if (!firstVideoSource) return null
+  if (timeline.length === 0) return null
 
   return (
     <div className="flex flex-col gap-3">
@@ -116,12 +153,6 @@ export function ExportPanel() {
         <p className="rounded-lg bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-300">
           이 브라우저에서는 영상 내보내기를 지원하지 않습니다. 최신 Chrome, Edge, Safari에서
           열어 주세요.
-        </p>
-      )}
-
-      {timeline.filter((item) => item.type === 'video').length > 1 && (
-        <p className="text-xs text-slate-500">
-          지금은 첫 영상 클립만 내보냅니다. 타임라인 전체를 하나로 합치는 기능은 준비 중입니다.
         </p>
       )}
 
@@ -148,6 +179,7 @@ export function ExportPanel() {
             <span data-testid="export-progress">{Math.round(phase.progress * 100)}%</span>
             <button
               type="button"
+              data-testid="cancel-export"
               onClick={cancelExport}
               className="text-rose-300 hover:text-rose-200"
             >
@@ -165,14 +197,26 @@ export function ExportPanel() {
           <p className="text-sm text-emerald-200">
             내보내기 완료 — {formatBytes(phase.size)} · {(phase.elapsedMs / 1000).toFixed(1)}초 소요
           </p>
-          <a
-            href={phase.url}
-            download={phase.fileName}
-            data-testid="download-link"
-            className="self-start rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
-          >
-            파일 저장
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={phase.url}
+              download={phase.fileName}
+              data-testid="download-link"
+              className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+            >
+              영상 저장
+            </a>
+            {phase.srtUrl && (
+              <a
+                href={phase.srtUrl}
+                download={phase.srtFileName}
+                data-testid="download-srt"
+                className="rounded-lg bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                자막 파일(.srt) 저장
+              </a>
+            )}
+          </div>
         </div>
       )}
 

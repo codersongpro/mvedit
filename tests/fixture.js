@@ -98,8 +98,30 @@ export async function inspectFile({ bundleSource, bytes, mimeType }) {
     frameCount += 1
   }
 
+  // 오디오 길이를 따로 재야 영상과 어긋나는지 볼 수 있다 (AC-013).
+  let audioDuration = null
+  let audioEnergy = null
+  if (audioTrack) {
+    audioDuration = await input.computeDuration([audioTrack])
+    // 구간별로 소리가 실제로 들어 있는지 본다. 무음 구간은 값이 0에 가깝다.
+    const audioSink = new mb.AudioSampleSink(audioTrack)
+    const buckets = []
+    for await (const sample of audioSink.samples()) {
+      const size = sample.allocationSize({ planeIndex: 0, format: 'f32' })
+      const pcm = new Float32Array(size / 4)
+      sample.copyTo(pcm, { planeIndex: 0, format: 'f32' })
+      let peak = 0
+      for (let i = 0; i < pcm.length; i += 1) peak = Math.max(peak, Math.abs(pcm[i]))
+      buckets.push({ t: sample.timestamp, peak })
+      sample.close()
+    }
+    audioEnergy = buckets
+  }
+
   const result = {
     duration: await input.computeDuration(),
+    audioDuration,
+    audioEnergy,
     width: videoTrack.displayWidth,
     height: videoTrack.displayHeight,
     rotation: await videoTrack.getRotation(),

@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
-import { exportSingleVideo, toExportError } from '../lib/media/export'
+import { composeTimeline } from '../lib/media/composeExport'
+import { toExportError } from '../lib/media/export'
 import {
   EXPORT_ERROR_MESSAGE,
   type ExportWorkerRequest,
@@ -25,10 +26,21 @@ self.onmessage = async (event: MessageEvent<ExportWorkerRequest>) => {
   abortController = new AbortController()
 
   try {
-    const result = await exportSingleVideo(request.file, request.profile, {
-      signal: abortController.signal,
-      onProgress: (progress, processedTime) => post({ type: 'progress', progress, processedTime }),
-    })
+    const { job } = request
+    const result = await composeTimeline(
+      {
+        timeline: job.timeline,
+        files: new Map(job.files),
+        kinds: new Map(job.kinds),
+        subtitles: job.subtitles,
+        subtitleStyle: job.subtitleStyle,
+        profile: job.profile,
+      },
+      {
+        signal: abortController.signal,
+        onProgress: (progress, processedTime) => post({ type: 'progress', progress, processedTime }),
+      },
+    )
 
     post(
       {
@@ -36,6 +48,7 @@ self.onmessage = async (event: MessageEvent<ExportWorkerRequest>) => {
         buffer: result.buffer,
         mimeType: result.mimeType,
         fileExtension: result.fileExtension,
+        srt: result.srt,
       },
       [result.buffer],
     )

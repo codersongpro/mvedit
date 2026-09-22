@@ -1,4 +1,5 @@
 import type { AudioCodec, VideoCodec } from 'mediabunny'
+import type { Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
 
 /**
  * 출력 코덱 조합.
@@ -55,11 +56,28 @@ export const EXPORT_ERROR_MESSAGE: Record<ExportErrorCode, string> = {
   unknown: '내보내는 중 문제가 발생했습니다.',
 }
 
-export type ExportWorkerRequest =
-  | { type: 'start'; file: File; profile: ExportCodecProfile }
-  | { type: 'cancel' }
+/** 워커로 넘기는 프로젝트. File 과 평범한 객체만 담아 구조화 복제가 되게 한다. */
+export interface ExportJob {
+  timeline: TimelineItem[]
+  /** 원본 id → 파일 */
+  files: Array<[string, File]>
+  /** 원본 id → 종류 */
+  kinds: Array<[string, 'video' | 'image']>
+  subtitles: Subtitle[]
+  subtitleStyle: SubtitleStyle
+  profile: ExportCodecProfile
+}
+
+export type ExportWorkerRequest = { type: 'start'; job: ExportJob } | { type: 'cancel' }
 
 export type ExportWorkerResponse =
   | { type: 'progress'; progress: number; processedTime: number }
-  | { type: 'done'; buffer: ArrayBuffer; mimeType: string; fileExtension: string }
+  | {
+      type: 'done'
+      buffer: ArrayBuffer
+      mimeType: string
+      fileExtension: string
+      /** 자막이 있을 때만 채워진다 */
+      srt: string | null
+    }
   | { type: 'error'; code: ExportErrorCode; message: string }
