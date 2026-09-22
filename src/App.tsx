@@ -303,8 +303,8 @@ export default function App() {
           누가 만들었는지 찾을 수 있어야 한다. */}
       <footer className="border-t border-slate-800 pt-4 text-xs text-slate-500">
         <p>
-          <span className="font-semibold text-slate-400">송동석</span> · Teacher / Data Analystic /
-          App developer
+          <span className="font-semibold text-slate-400">송동석</span> · Teacher / Data Analyst /
+          App Developer
         </p>
       </footer>
     </main>

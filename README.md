@@ -98,4 +98,4 @@ Playwright는 프로젝트 의존성에 넣지 않고 전역 설치본을 씁니
 
 ## 만든 사람
 
-송동석 · Teacher / Data Analystic / App developer
+송동석 · Teacher / Data Analyst / App Developer

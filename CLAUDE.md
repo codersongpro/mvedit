@@ -7,7 +7,7 @@
 이 프로젝트(그리고 사용자의 다른 산출물)에 만든 사람을 적을 때는 항상 이렇게 쓴다.
 
 ```
-송동석 · Teacher / Data Analystic / App developer
+송동석 · Teacher / Data Analyst / App Developer
 ```
 
 ## 작업 방식
