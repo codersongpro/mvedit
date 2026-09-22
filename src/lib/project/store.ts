@@ -37,6 +37,12 @@ interface ProjectState {
   rejected: RejectedFile[]
   importing: boolean
 
+  /** 자동 저장되는 프로젝트의 id. 첫 파일을 넣을 때 생긴다 (FR-023). */
+  projectId: string | null
+  projectName: string
+  /** 저장공간이 부족할 때의 안내. 편집은 계속할 수 있다 (FR-026). */
+  storageWarning: string | null
+
   selectedItemId: string | null
   selectedSubtitleId: string | null
   /** 타임라인 시작부터의 시각(초) */
@@ -54,6 +60,11 @@ interface ProjectState {
   addImported: (sources: MediaSource[], items: TimelineItem[], rejected: RejectedFile[]) => void
   setImporting: (importing: boolean) => void
   clearRejected: () => void
+
+  setProjectName: (name: string) => void
+  setStorageWarning: (message: string | null) => void
+  /** 저장해 둔 프로젝트를 통째로 되살린다. 되돌리기 기록은 새로 시작한다. */
+  restore: (payload: RestorePayload) => void
 
   select: (id: string | null) => void
   selectSubtitle: (id: string | null) => void
@@ -82,6 +93,16 @@ interface ProjectState {
   reset: () => void
 }
 
+export interface RestorePayload {
+  projectId: string
+  projectName: string
+  sources: MediaSource[]
+  timeline: TimelineItem[]
+  subtitles: Subtitle[]
+  subtitleStyle: SubtitleStyle
+  exportSetting: ExportSetting
+}
+
 /** 되돌리기 한 칸. 타임라인과 자막은 함께 움직여야 한다. */
 interface Snapshot {
   timeline: TimelineItem[]
@@ -89,6 +110,9 @@ interface Snapshot {
 }
 
 const EMPTY = {
+  projectId: null as string | null,
+  projectName: '새 프로젝트',
+  storageWarning: null as string | null,
   sources: [] as MediaSource[],
   timeline: [] as TimelineItem[],
   subtitles: [] as Subtitle[],
@@ -163,6 +187,13 @@ export const useProject = create<ProjectState>((set, get) => {
 
     addImported: (sources, items, rejected) =>
       set((state) => ({
+        // 첫 파일을 넣는 순간 프로젝트가 생긴다. 빈 화면에서 만들어 두면
+        // 아무것도 하지 않고 떠난 사람의 빈 프로젝트가 목록에 쌓인다.
+        projectId: state.projectId ?? crypto.randomUUID(),
+        projectName:
+          state.projectId === null
+            ? (sources[0]?.fileName.replace(/\.[^.]+$/, '') ?? state.projectName)
+            : state.projectName,
         sources: [...state.sources, ...sources],
         past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
           -HISTORY_LIMIT,
@@ -176,6 +207,21 @@ export const useProject = create<ProjectState>((set, get) => {
 
     setImporting: (importing) => set({ importing }),
     clearRejected: () => set({ rejected: [] }),
+
+    setProjectName: (name) => set({ projectName: name }),
+    setStorageWarning: (message) => set({ storageWarning: message }),
+
+    restore: (payload) =>
+      set({
+        ...EMPTY,
+        projectId: payload.projectId,
+        projectName: payload.projectName,
+        sources: payload.sources,
+        timeline: payload.timeline,
+        subtitles: payload.subtitles,
+        subtitleStyle: payload.subtitleStyle,
+        exportSetting: payload.exportSetting,
+      }),
 
     select: (id) => set({ selectedItemId: id }),
 
@@ -305,10 +351,10 @@ export const useProject = create<ProjectState>((set, get) => {
           past: state.past.slice(0, -1),
           timeline: previous.timeline,
           subtitles: previous.subtitles,
-          future: [
-            { timeline: state.timeline, subtitles: state.subtitles },
-            ...state.future,
-          ].slice(0, HISTORY_LIMIT),
+          future: [{ timeline: state.timeline, subtitles: state.subtitles }, ...state.future].slice(
+            0,
+            HISTORY_LIMIT,
+          ),
           playing: false,
           playhead: clampPlayhead(previous.timeline, state.playhead),
           selectedItemId: previous.timeline.some((item) => item.id === state.selectedItemId)

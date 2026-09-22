@@ -7,9 +7,11 @@ import { FilePicker } from './components/FilePicker'
 import { HelpPanel } from './components/HelpPanel'
 import { Preview } from './components/Preview'
 import { SubtitlePanel } from './components/SubtitlePanel'
+import { ProjectList } from './components/ProjectList'
 import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
 import { useProject } from './lib/project/store'
+import { persistSources, useAutosave } from './lib/project/persist'
 import { detectCapabilities, type Capabilities } from './lib/capabilities'
 import { useEditShortcuts } from './lib/useEditShortcuts'
 
@@ -23,8 +25,14 @@ export default function App() {
   const addImported = useProject((state) => state.addImported)
   const setImporting = useProject((state) => state.setImporting)
   const clearRejected = useProject((state) => state.clearRejected)
+  const projectName = useProject((state) => state.projectName)
+  const projectId = useProject((state) => state.projectId)
+  const setProjectName = useProject((state) => state.setProjectName)
+  const storageWarning = useProject((state) => state.storageWarning)
+  const setStorageWarning = useProject((state) => state.setStorageWarning)
 
   useEditShortcuts()
+  useAutosave()
 
   useEffect(() => {
     let cancelled = false
@@ -43,6 +51,10 @@ export default function App() {
       const { importFiles } = await import('./lib/media/import')
       const outcome = await importFiles(files)
       addImported(outcome.sources, outcome.items, outcome.rejected)
+
+      // 원본 복사는 화면을 막지 않는다. 편집은 이미 시작할 수 있는 상태다.
+      const id = useProject.getState().projectId
+      if (id && outcome.sources.length > 0) void persistSources(id, outcome.sources)
     },
     [addImported, setImporting],
   )
@@ -56,6 +68,41 @@ export default function App() {
         </h1>
       </header>
 
+      {projectId !== null && (
+        <section className="flex items-center gap-2">
+          <label htmlFor="project-name" className="shrink-0 text-xs text-slate-400">
+            프로젝트 이름
+          </label>
+          <input
+            id="project-name"
+            data-testid="project-name"
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            className="h-10 min-w-0 flex-1 rounded-lg bg-slate-900 px-3 text-sm text-slate-100"
+          />
+          <span data-testid="autosave-note" className="shrink-0 text-[11px] text-slate-500">
+            자동 저장됨
+          </span>
+        </section>
+      )}
+
+      {storageWarning && (
+        <p
+          data-testid="storage-warning"
+          className="rounded-lg bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300"
+        >
+          {storageWarning}{' '}
+          <button
+            type="button"
+            data-testid="dismiss-storage-warning"
+            onClick={() => setStorageWarning(null)}
+            className="underline"
+          >
+            닫기
+          </button>
+        </p>
+      )}
+
       <section className="flex flex-col gap-4">
         <FilePicker onSelect={handleSelect} disabled={importing} />
         {importing && (
@@ -64,6 +111,7 @@ export default function App() {
           </p>
         )}
         <RejectedFiles files={rejected} onDismiss={clearRejected} />
+        <ProjectList />
       </section>
 
       {timeline.length > 0 && (
