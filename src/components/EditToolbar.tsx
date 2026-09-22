@@ -7,7 +7,7 @@ import { useProject } from '../lib/project/store'
  */
 export const FRAME_STEP = 1 / 30
 
-export function EditToolbar() {
+export function EditToolbar({ nowrap }: { nowrap?: boolean } = {}) {
   const timeline = useProject((state) => state.timeline)
   const selectedItemId = useProject((state) => state.selectedItemId)
   const past = useProject((state) => state.past)
@@ -25,8 +25,21 @@ export function EditToolbar() {
   const index = timeline.findIndex((item) => item.id === selectedItemId)
   const hasSelection = index !== -1
 
+  const divider = <span className="mx-1 h-5 w-px bg-slate-700" />
+
+  const history = (
+    <>
+      <ToolButton testId="undo" onClick={undo} disabled={past.length === 0}>
+        되돌리기
+      </ToolButton>
+      <ToolButton testId="redo" onClick={redo} disabled={future.length === 0}>
+        다시 실행
+      </ToolButton>
+    </>
+  )
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={`flex items-center gap-2 ${nowrap ? 'w-max flex-nowrap' : 'flex-wrap'}`}>
       <ToolButton testId="split" onClick={split} primary>
         자르기
       </ToolButton>
@@ -34,15 +47,30 @@ export function EditToolbar() {
         지우기
       </ToolButton>
 
-      <span className="mx-1 h-5 w-px bg-slate-700" />
+      {/* 한 줄로 밀어 보는 모바일 바에서는 되돌리기를 앞에 둔다. 가장 자주
+          쓰는데 끝에 있으면 매번 옆으로 밀어 찾아야 한다. */}
+      {nowrap && divider}
+      {nowrap && history}
+
+      {divider}
 
       <span className="flex items-center gap-1.5">
         <span className="text-xs text-slate-400">빈 화면 추가</span>
-        <BlankButton testId="insert-blank" color="#000000" label="검은 빈 화면 추가" onClick={insertBlank} />
-        <BlankButton testId="insert-blank-white" color="#FFFFFF" label="흰 빈 화면 추가" onClick={insertBlank} />
+        <BlankButton
+          testId="insert-blank"
+          color="#000000"
+          label="검은 빈 화면 추가"
+          onClick={insertBlank}
+        />
+        <BlankButton
+          testId="insert-blank-white"
+          color="#FFFFFF"
+          label="흰 빈 화면 추가"
+          onClick={insertBlank}
+        />
       </span>
 
-      <span className="mx-1 h-5 w-px bg-slate-700" />
+      {divider}
 
       <ToolButton
         testId="move-back"
@@ -61,14 +89,8 @@ export function EditToolbar() {
         →
       </ToolButton>
 
-      <span className="mx-1 h-5 w-px bg-slate-700" />
-
-      <ToolButton testId="undo" onClick={undo} disabled={past.length === 0}>
-        되돌리기
-      </ToolButton>
-      <ToolButton testId="redo" onClick={redo} disabled={future.length === 0}>
-        다시 실행
-      </ToolButton>
+      {!nowrap && divider}
+      {!nowrap && history}
     </div>
   )
 }

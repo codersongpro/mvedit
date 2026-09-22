@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { findSource, useProject } from '../lib/project/store'
 import { MIN_CLIP_SECONDS, type TrimEdge } from '../lib/project/edit'
 import { toSegments } from '../lib/project/playback'
@@ -12,6 +12,7 @@ import {
   type TimelineItem,
 } from '../lib/project/types'
 import { formatClock } from '../lib/format'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // 1초를 1픽셀로 보면 한 시간짜리 영상도 한눈에 들어오고,
 // 600픽셀이면 30fps 기준 한 프레임이 20픽셀이라 프레임 단위로 집을 수 있다.
@@ -44,6 +45,65 @@ export function Timeline() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const total = timelineDuration(timeline)
+
+  // 모바일에서는 재생헤드가 화면 중앙에 고정되고 타임라인이 움직인다 (FR-029).
+  // 좁은 화면에서 재생헤드를 직접 끌면 손가락이 그 지점을 가려 보이지 않는다.
+  const centered = useIsMobile()
+  const [halfWidth, setHalfWidth] = useState(0)
+  const syncingRef = useRef(false)
+  // 확대 콜백은 의존성을 늘리지 않으려고 ref 로 읽는다.
+  const centeredRef = useRef(centered)
+  centeredRef.current = centered
+
+  // 시작과 끝도 중앙에 놓으려면 앞뒤로 화면 절반만큼의 여백이 필요하다.
+  //
+  // 타임라인이 비어 있는 동안에는 이 요소 자체가 없다. 클립이 생겨 요소가
+  // 나타나는 순간 다시 재야 하므로 hasClips 를 의존성에 넣는다.
+  const hasClips = timeline.length > 0
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current
+    if (!scroll || !centered || !hasClips) {
+      setHalfWidth(0)
+      return
+    }
+    const measure = () => setHalfWidth(scroll.clientWidth / 2)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(scroll)
+    return () => observer.disconnect()
+  }, [centered, hasClips])
+
+  /** 내용 요소가 스크롤 안쪽에서 시작하는 위치(px). 여백을 직접 계산하지 않는다. */
+  const contentOffset = useCallback(() => {
+    const scroll = scrollRef.current
+    const content = contentRef.current
+    if (!scroll || !content) return 0
+    return (
+      content.getBoundingClientRect().left - scroll.getBoundingClientRect().left + scroll.scrollLeft
+    )
+  }, [])
+
+  // 재생헤드가 바뀌면 타임라인을 밀어 중앙에 맞춘다. 재생 중에도 같은 길로
+  // 흐르므로 화면이 따라 흐른다.
+  useEffect(() => {
+    const scroll = scrollRef.current
+    if (!centered || !scroll || halfWidth === 0) return
+    const target = contentOffset() + playhead * pxPerSecond - scroll.clientWidth / 2
+    if (Math.abs(scroll.scrollLeft - target) < 1) return
+    // 이 스크롤은 우리가 만든 것이다. 다시 재생헤드로 되돌리면 서로 밀어낸다.
+    syncingRef.current = true
+    scroll.scrollLeft = target
+    requestAnimationFrame(() => {
+      syncingRef.current = false
+    })
+  }, [centered, halfWidth, playhead, pxPerSecond, contentOffset])
+
+  /** 손가락으로 민 만큼 재생헤드를 옮긴다 (AC-033). */
+  const onScroll = useCallback(() => {
+    const scroll = scrollRef.current
+    if (!centered || !scroll || syncingRef.current || halfWidth === 0) return
+    setPlayhead((scroll.scrollLeft + scroll.clientWidth / 2 - contentOffset()) / pxPerSecond)
+  }, [centered, halfWidth, pxPerSecond, contentOffset, setPlayhead])
 
   /**
    * 자막을 타임라인 좌표로 환산한다.
@@ -89,6 +149,11 @@ export function Timeline() {
       const next = clampZoom(current * factor)
       if (!scroll || !content || next === current) return next
 
+      // 중앙 고정 모드에서 붙잡을 지점은 이미 정해져 있다. 재생헤드다.
+      // 여기서 스크롤까지 건드리면 재생헤드를 따라 맞추는 쪽과 서로 밀어내
+      // 엉뚱한 시각으로 날아간다.
+      if (centeredRef.current) return next
+
       const contentLeft = content.getBoundingClientRect().left
       const anchorX = anchorClientX ?? scroll.getBoundingClientRect().left + scroll.clientWidth / 2
       const anchorSeconds = (anchorX - contentLeft) / current
@@ -107,7 +172,8 @@ export function Timeline() {
     // p-2 안쪽 여백 16px 에 더해 2px 을 남긴다. 반올림 때문에 1픽셀이
     // 삐져나와 가로 스크롤바가 생기는 것을 막는다.
     setPxPerSecond(clampZoom((scroll.clientWidth - 18) / total))
-    scroll.scrollLeft = 0
+    // 중앙 고정 모드의 스크롤 위치는 재생헤드가 정한다.
+    if (!centeredRef.current) scroll.scrollLeft = 0
   }, [total])
 
   // 스크롤 컨테이너가 아니라 시간축 내용 요소를 기준으로 잰다.
@@ -187,87 +253,100 @@ export function Timeline() {
           <span data-testid="timeline-duration" className="tabular-nums">
             전체 {formatClock(total)}
           </span>
-          <ZoomControls
-            pxPerSecond={pxPerSecond}
-            onZoom={zoomAround}
-            onFit={zoomToFit}
-          />
+          <ZoomControls pxPerSecond={pxPerSecond} onZoom={zoomAround} onFit={zoomToFit} />
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        data-testid="timeline"
-        data-px-per-second={pxPerSecond}
-        onWheel={onWheel}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endPinch}
-        onPointerCancel={endPinch}
-        className="relative overflow-x-auto rounded-xl bg-slate-900/60 p-2"
-      >
+      <div className="relative">
         <div
-          ref={contentRef}
-          className="relative"
-          style={{ width: `${Math.max(total * pxPerSecond, 1)}px` }}
+          ref={scrollRef}
+          data-testid="timeline"
+          data-px-per-second={pxPerSecond}
+          data-centered={centered ? 'yes' : 'no'}
+          onWheel={onWheel}
+          onScroll={onScroll}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endPinch}
+          onPointerCancel={endPinch}
+          className="relative flex overflow-x-auto rounded-xl bg-slate-900/60 p-2"
         >
-          <Ruler total={total} pxPerSecond={pxPerSecond} onSeek={seekFromPointer} />
-
-          <div className="relative flex" style={{ height: `${TRACK_HEIGHT}px` }}>
-            {timeline.map((item, index) => (
-              <Clip
-                key={item.id}
-                item={item}
-                index={index}
-                source={findSource(sources, item.sourceId)}
-                pxPerSecond={pxPerSecond}
-                selected={item.id === selectedItemId}
-                onSelect={(clientX) => {
-                  select(item.id)
-                  // 클립을 고르면서 누른 그 지점으로 재생헤드를 옮긴다.
-                  // 클립 앞으로 보내면 보려던 장면을 다시 찾아가야 한다.
-                  seekFromPointer(clientX)
-                }}
-              />
-            ))}
-          </div>
-
+          {/* 여백은 빈 칸으로 만든다. 스크롤 컨테이너의 padding-right 는
+            브라우저마다 스크롤 폭에 넣는 방식이 달라 믿을 수 없다. */}
+          {centered && <div style={{ width: `${halfWidth}px` }} className="shrink-0" />}
           <div
-            data-testid="subtitle-lane"
-            className="relative mt-1"
-            style={{ height: `${SUBTITLE_LANE_HEIGHT}px` }}
+            ref={contentRef}
+            className="relative shrink-0"
+            style={{ width: `${Math.max(total * pxPerSecond, 1)}px` }}
           >
-            {placedSubtitles.length === 0 && (
-              <span className="absolute inset-y-0 left-0 flex items-center text-[10px] text-slate-600">
-                자막
-              </span>
-            )}
-            {placedSubtitles.map(({ subtitle, left, width }) => (
-              <SubtitleBlock
-                key={subtitle.id}
-                subtitle={subtitle}
-                left={left}
-                width={width}
-                pxPerSecond={pxPerSecond}
-                selected={subtitle.id === selectedSubtitleId}
-                onSelect={() => {
-                  selectSubtitle(subtitle.id)
-                  setPlayhead(left)
-                }}
-                onTrim={(edge, deltaSeconds) =>
-                  updateSubtitle(
-                    subtitle.id,
-                    edge === 'start'
-                      ? { start: subtitle.start + deltaSeconds }
-                      : { end: subtitle.end + deltaSeconds },
-                  )
-                }
-              />
-            ))}
-          </div>
+            <Ruler total={total} pxPerSecond={pxPerSecond} onSeek={seekFromPointer} />
 
-          <Playhead seconds={playhead} pxPerSecond={pxPerSecond} />
+            <div className="relative flex" style={{ height: `${TRACK_HEIGHT}px` }}>
+              {timeline.map((item, index) => (
+                <Clip
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  source={findSource(sources, item.sourceId)}
+                  pxPerSecond={pxPerSecond}
+                  selected={item.id === selectedItemId}
+                  onSelect={(clientX) => {
+                    select(item.id)
+                    // 클립을 고르면서 누른 그 지점으로 재생헤드를 옮긴다.
+                    // 클립 앞으로 보내면 보려던 장면을 다시 찾아가야 한다.
+                    seekFromPointer(clientX)
+                  }}
+                />
+              ))}
+            </div>
+
+            <div
+              data-testid="subtitle-lane"
+              className="relative mt-1"
+              style={{ height: `${SUBTITLE_LANE_HEIGHT}px` }}
+            >
+              {placedSubtitles.length === 0 && (
+                <span className="absolute inset-y-0 left-0 flex items-center text-[10px] text-slate-600">
+                  자막
+                </span>
+              )}
+              {placedSubtitles.map(({ subtitle, left, width }) => (
+                <SubtitleBlock
+                  key={subtitle.id}
+                  subtitle={subtitle}
+                  left={left}
+                  width={width}
+                  pxPerSecond={pxPerSecond}
+                  selected={subtitle.id === selectedSubtitleId}
+                  onSelect={() => {
+                    selectSubtitle(subtitle.id)
+                    setPlayhead(left)
+                  }}
+                  onTrim={(edge, deltaSeconds) =>
+                    updateSubtitle(
+                      subtitle.id,
+                      edge === 'start'
+                        ? { start: subtitle.start + deltaSeconds }
+                        : { end: subtitle.end + deltaSeconds },
+                    )
+                  }
+                />
+              ))}
+            </div>
+
+            <Playhead seconds={playhead} pxPerSecond={pxPerSecond} />
+          </div>
+          {centered && <div style={{ width: `${halfWidth}px` }} className="shrink-0" />}
         </div>
+
+        {/* 중앙 고정선. 스크롤 바깥에 두어야 타임라인과 함께 밀려나지 않는다. */}
+        {centered && (
+          <div
+            data-testid="center-playhead"
+            aria-hidden
+            className="pointer-events-none absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 bg-sky-400"
+          />
+        )}
       </div>
     </div>
   )

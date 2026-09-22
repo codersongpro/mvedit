@@ -3,9 +3,12 @@ import { useRef, useState } from 'react'
 export function FilePicker({
   onSelect,
   disabled,
+  compact,
 }: {
   onSelect: (files: File[]) => void
   disabled?: boolean
+  /** 좁은 화면에서 이미 편집 중일 때. 큰 안내 영역이 화면을 다 먹지 않게 한다. */
+  compact?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -13,6 +16,39 @@ export function FilePicker({
   const handleFiles = (files: FileList | null) => {
     const list = Array.from(files ?? [])
     if (list.length > 0) onSelect(list)
+  }
+
+  const input = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="video/*,image/*,.cutcap"
+      multiple
+      className="sr-only"
+      data-testid="file-input"
+      onChange={(event) => {
+        handleFiles(event.target.files)
+        // 같은 파일을 다시 골라도 change 가 발생하도록 비운다.
+        event.target.value = ''
+      }}
+    />
+  )
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2">
+        {input}
+        <button
+          type="button"
+          disabled={disabled}
+          data-testid="add-more"
+          onClick={() => inputRef.current?.click()}
+          className="min-h-11 rounded-lg bg-slate-800 px-4 text-sm font-semibold text-sky-300 disabled:text-slate-500"
+        >
+          + 영상·사진 추가
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -31,19 +67,7 @@ export function FilePicker({
         dragging ? 'border-sky-400 bg-sky-500/10' : 'border-slate-700 bg-slate-900/40'
       }`}
     >
-      <input
-        ref={inputRef}
-        type="file"
-        accept="video/*,image/*,.cutcap"
-        multiple
-        className="sr-only"
-        data-testid="file-input"
-        onChange={(event) => {
-          handleFiles(event.target.files)
-          // 같은 파일을 다시 골라도 change 가 발생하도록 비운다.
-          event.target.value = ''
-        }}
-      />
+      {input}
       <button
         type="button"
         disabled={disabled}

@@ -5,6 +5,7 @@ import { subtitleAt } from '../lib/project/subtitles'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { timelineDuration } from '../lib/project/types'
 import { computeOutputSize } from '../lib/media/outputSize'
+import { useIsMobile } from '../lib/useIsMobile'
 import { formatClock } from '../lib/format'
 
 /** 영상 시각이 이보다 어긋나면 맞춰 준다. 매 프레임 맞추면 재생이 끊긴다. */
@@ -31,6 +32,7 @@ export function Preview() {
   const subtitles = useProject((state) => state.subtitles)
   const subtitleStyle = useProject((state) => state.subtitleStyle)
   const exportSetting = useProject((state) => state.exportSetting)
+  const mobile = useIsMobile()
 
   const segments = useMemo(() => toSegments(timeline), [timeline])
   const total = timelineDuration(timeline)
@@ -245,7 +247,9 @@ export function Preview() {
           aspectRatio: `${outputSize.width} / ${outputSize.height}`,
           // 세로로 긴 출력은 화면을 넘지 않게 가로를 줄인다. 높이만 제한하면
           // 가로가 그대로 남아 비율이 깨진다.
-          maxWidth: `calc(70vh * ${outputSize.width / outputSize.height})`,
+          // 모바일에서는 미리보기가 화면을 다 먹지 않게 더 낮게 잡는다.
+          // 타임라인과 도구 바가 같이 보여야 편집을 한 손으로 이어갈 수 있다.
+          maxWidth: `calc(${mobile ? '38dvh' : '70vh'} * ${outputSize.width / outputSize.height})`,
         }}
         className="relative mx-auto w-full overflow-hidden rounded-xl bg-black"
       >

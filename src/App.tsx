@@ -23,6 +23,7 @@ import {
 } from './lib/project/file'
 import { detectCapabilities, type Capabilities } from './lib/capabilities'
 import { useEditShortcuts } from './lib/useEditShortcuts'
+import { useIsMobile } from './lib/useIsMobile'
 
 export default function App() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
@@ -43,6 +44,7 @@ export default function App() {
 
   useEditShortcuts()
   useAutosave()
+  const mobile = useIsMobile()
 
   useEffect(() => {
     let cancelled = false
@@ -118,10 +120,21 @@ export default function App() {
   )
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 px-4 py-10">
-      <header>
+    <main
+      className={`mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 ${
+        mobile ? 'gap-5 pt-5 pb-28' : 'gap-8 py-10'
+      }`}
+    >
+      <header className={mobile ? 'flex items-baseline gap-2' : undefined}>
         <p className="text-xs font-medium tracking-widest text-sky-400 uppercase">CutCap</p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">
+        {/* 좁은 화면에서는 제목이 첫 화면을 차지하지 않게 한 줄로 줄인다. */}
+        <h1
+          className={
+            mobile
+              ? 'text-sm font-semibold text-slate-300'
+              : 'mt-2 text-2xl font-bold text-slate-50 sm:text-3xl'
+          }
+        >
           누구나 하는 컷편집과 캡션넣기
         </h1>
       </header>
@@ -181,7 +194,11 @@ export default function App() {
       )}
 
       <section className="flex flex-col gap-4">
-        <FilePicker onSelect={handleSelect} disabled={importing} />
+        <FilePicker
+          onSelect={handleSelect}
+          disabled={importing}
+          compact={mobile && timeline.length > 0}
+        />
         {importing && (
           <p data-testid="importing" className="text-sm text-slate-400">
             파일을 읽는 중…
@@ -193,15 +210,23 @@ export default function App() {
       </section>
 
       {timeline.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-slate-300">미리보기</h2>
+        <section
+          data-testid="preview-section"
+          className={
+            mobile
+              ? 'sticky top-0 z-20 -mx-4 flex flex-col gap-2 bg-slate-950/95 px-4 pt-2 pb-3 backdrop-blur'
+              : 'flex flex-col gap-3'
+          }
+        >
+          {!mobile && <h2 className="text-sm font-semibold text-slate-300">미리보기</h2>}
           <Preview />
         </section>
       )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-slate-300">타임라인</h2>
-        <EditToolbar />
+        {/* 모바일에서는 같은 도구 바를 화면 아래에 고정해 한 손으로 누른다. */}
+        {!mobile && <EditToolbar />}
         <Timeline />
         {timeline.length > 0 && <ClipInspector />}
         <HelpPanel />
@@ -219,6 +244,15 @@ export default function App() {
           <h2 className="text-sm font-semibold text-slate-300">내보내기</h2>
           <ExportPanel />
         </section>
+      )}
+
+      {mobile && timeline.length > 0 && (
+        <div
+          data-testid="mobile-toolbar"
+          className="fixed inset-x-0 bottom-0 z-30 overflow-x-auto border-t border-slate-800 bg-slate-950/95 px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur"
+        >
+          <EditToolbar nowrap />
+        </div>
       )}
 
       <section>
