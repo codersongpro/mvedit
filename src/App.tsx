@@ -52,7 +52,7 @@ export default function App() {
       <header>
         <p className="text-xs font-medium tracking-widest text-sky-400 uppercase">CutCap</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">
-          누구나 하는 컷편집과 자막넣기
+          누구나 하는 컷편집과 캡션넣기
         </h1>
       </header>
 

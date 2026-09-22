@@ -293,8 +293,8 @@ try {
     (await page.locator('[data-testid="export-button"]').innerText()).trim(),
   )
   check(
-    '제목이 누구나 하는 컷편집과 자막넣기',
-    (await page.locator('h1').innerText()).trim() === '누구나 하는 컷편집과 자막넣기',
+    '제목이 누구나 하는 컷편집과 캡션넣기',
+    (await page.locator('h1').innerText()).trim() === '누구나 하는 컷편집과 캡션넣기',
     (await page.locator('h1').innerText()).trim(),
   )
 
