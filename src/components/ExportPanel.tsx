@@ -7,13 +7,14 @@ import {
   type ExportWorkerRequest,
   type ExportWorkerResponse,
 } from '../lib/media/exportTypes'
-import { formatBytes } from '../lib/format'
+import { formatBytes, formatClock } from '../lib/format'
+import { estimateRemainingMs } from '../lib/project/limits'
 import { lowerResolution } from '../lib/media/outputSize'
 import { ExportSettings } from './ExportSettings'
 
 type Phase =
   | { status: 'idle' }
-  | { status: 'exporting'; progress: number; retrying: boolean }
+  | { status: 'exporting'; progress: number; retrying: boolean; remainingMs: number | null }
   | {
       status: 'done'
       url: string
@@ -87,7 +88,7 @@ export function ExportPanel() {
     })
     workerRef.current = worker
     startedAtRef.current = performance.now()
-    setPhase({ status: 'exporting', progress: 0, retrying: false })
+    setPhase({ status: 'exporting', progress: 0, retrying: false, remainingMs: null })
 
     worker.onmessage = (event: MessageEvent<ExportWorkerResponse>) => {
       const message = event.data
@@ -96,12 +97,20 @@ export function ExportPanel() {
           status: 'exporting',
           progress: message.progress,
           retrying: previous.status === 'exporting' ? previous.retrying : false,
+          // 남은 시간은 지금까지 걸린 시간으로 잰다. 기기마다 몇 배씩 차이가
+          // 나므로 미리 계산한 숫자는 맞지 않는다.
+          remainingMs: estimateRemainingMs(
+            message.progress,
+            performance.now() - startedAtRef.current,
+          ),
         }))
         return
       }
 
       if (message.type === 'retrying') {
-        setPhase({ status: 'exporting', progress: 0, retrying: true })
+        // 다시 인코딩하면 처음부터다. 앞서 잰 시간으로 남은 시간을 말하면 틀린다.
+        startedAtRef.current = performance.now()
+        setPhase({ status: 'exporting', progress: 0, retrying: true, remainingMs: null })
         return
       }
 
@@ -221,7 +230,14 @@ export function ExportPanel() {
             </p>
           )}
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span data-testid="export-progress">{Math.round(phase.progress * 100)}%</span>
+            <span data-testid="export-progress">
+              {Math.round(phase.progress * 100)}%
+              {phase.remainingMs !== null && (
+                <span data-testid="export-remaining" className="ml-2 text-slate-500">
+                  약 {formatClock(phase.remainingMs / 1000)} 남음
+                </span>
+              )}
+            </span>
             <button
               type="button"
               data-testid="cancel-export"

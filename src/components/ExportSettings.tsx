@@ -9,6 +9,7 @@ import {
   floorFileSize,
 } from '../lib/media/outputSize'
 import { timelineDuration, type AspectRatio, type QualityLevel } from '../lib/project/types'
+import { exportWork, heavyExportNotice } from '../lib/project/limits'
 import { formatBytes } from '../lib/format'
 
 const ASPECTS: Array<{ value: AspectRatio; label: string; hint: string }> = [
@@ -69,6 +70,12 @@ export function ExportSettings() {
   // 내보내기를 돌려 실패를 보여 주기 전에 미리 알린다 (FR-019).
   const floor = floorFileSize(duration)
   const tooSmallTarget = setting.targetSizeMb !== null && setting.targetSizeMb * MB < floor
+
+  // 오래 걸릴 작업인지 미리 알린다. 기다릴지 설정을 낮출지는 사용자가 정한다.
+  const heavy = heavyExportNotice(
+    exportWork(size.width, size.height, setting.fps, duration),
+    setting.resolution,
+  )
 
   return (
     <div
@@ -202,6 +209,12 @@ export function ExportSettings() {
             : '목표를 넘으면 화질을 낮춰 한 번 다시 인코딩합니다'}
         </span>
       </div>
+
+      {heavy && (
+        <p data-testid="heavy-export-notice" className="text-xs leading-relaxed text-amber-300/80">
+          {heavy}
+        </p>
+      )}
 
       {upscaling && (
         <p data-testid="upscale-warning" className="text-xs leading-relaxed text-amber-300/80">

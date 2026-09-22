@@ -25,6 +25,7 @@ import {
 import { detectCapabilities, type Capabilities } from './lib/capabilities'
 import { useEditShortcuts } from './lib/useEditShortcuts'
 import { useIsMobile } from './lib/useIsMobile'
+import { timelineNotices } from './lib/project/limits'
 
 export default function App() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
@@ -178,6 +179,18 @@ export default function App() {
       )}
 
       <StorageNotice />
+
+      {/* 한계를 넘어도 편집을 막지는 않는다. 다만 모르고 있다가 내보내기에서
+          실패하는 일이 없도록 미리 알린다 (PRD 11절). */}
+      {timelineNotices(timeline).map((notice) => (
+        <p
+          key={notice.id}
+          data-testid={`limit-notice-${notice.id}`}
+          className="rounded-lg bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300"
+        >
+          {notice.message}
+        </p>
+      ))}
 
       {storageWarning && (
         <p

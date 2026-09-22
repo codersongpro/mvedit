@@ -1,4 +1,6 @@
 import { ALL_FORMATS, BlobSource, Input, VideoSampleSink } from 'mediabunny'
+import { MAX_FILE_BYTES } from '../project/limits'
+import { formatBytes } from '../format'
 import {
   DEFAULT_IMAGE_DURATION,
   type MediaSource,
@@ -41,9 +43,17 @@ export async function importFiles(files: File[]): Promise<ImportOutcome> {
 
   for (const file of files) {
     try {
-      const source = file.type.startsWith('image/')
-        ? await readImage(file)
-        : await readVideo(file)
+      // 열기 전에 크기부터 본다. 2GB 짜리를 디코딩하다 탭이 죽으면 그때까지
+      // 한 편집도 함께 사라진다 (PRD 11절).
+      if (file.size > MAX_FILE_BYTES) {
+        outcome.rejected.push({
+          fileName: file.name,
+          reason: `파일이 너무 큽니다(${formatBytes(file.size)}). ${formatBytes(MAX_FILE_BYTES)}까지만 열 수 있습니다.`,
+        })
+        continue
+      }
+
+      const source = file.type.startsWith('image/') ? await readImage(file) : await readVideo(file)
 
       if (!source) {
         outcome.rejected.push({
