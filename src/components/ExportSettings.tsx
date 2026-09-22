@@ -44,6 +44,18 @@ export function ExportSettings() {
       : { width: 1280, height: 720 }
   }, [sources])
 
+  // '원본 그대로'를 골라도 화면비가 다른 클립이 섞여 있으면 맞추는 방법이
+  // 결과를 바꾼다. 세로 영상과 가로 영상을 같이 쓰는 경우가 그렇다.
+  const mixedAspects = useMemo(() => {
+    const ratios = new Set(
+      sources
+        .filter((source) => source.displayHeight > 0)
+        .map((source) => (source.displayWidth / source.displayHeight).toFixed(2)),
+    )
+    return ratios.size > 1
+  }, [sources])
+  const fitMatters = setting.aspectRatio !== 'source' || mixedAspects
+
   const size = computeOutputSize(setting, sourceSize)
   const estimated = estimateFileSize(setting, size, duration)
   // 480p 보다 작은 원본은 목록에 맞는 선택지가 없어 무조건 커진다. 그때
@@ -70,8 +82,15 @@ export function ExportSettings() {
         ))}
       </Row>
 
-      {setting.aspectRatio !== 'source' && (
+      {fitMatters && (
         <Row label="맞추는 방법">
+          <Choice
+            testId="fit-blur"
+            active={setting.fitMode === 'blur'}
+            onClick={() => setSetting({ fitMode: 'blur' })}
+          >
+            흐린 배경 채우기
+          </Choice>
           <Choice
             testId="fit-contain"
             active={setting.fitMode === 'contain'}
@@ -87,9 +106,11 @@ export function ExportSettings() {
             잘라 채우기
           </Choice>
           <span className="text-[11px] text-slate-500">
-            {setting.fitMode === 'contain'
-              ? '영상이 잘리지 않고 빈 곳에 검은 여백이 생깁니다.'
-              : '여백 없이 꽉 차지만 화면 밖이 잘립니다.'}
+            {setting.fitMode === 'blur'
+              ? '잘리지 않고, 남는 자리는 같은 화면을 흐리게 키워 채웁니다.'
+              : setting.fitMode === 'contain'
+                ? '영상이 잘리지 않고 빈 곳에 검은 여백이 생깁니다.'
+                : '여백 없이 꽉 차지만 화면 밖이 잘립니다.'}
           </span>
         </Row>
       )}

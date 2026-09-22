@@ -107,6 +107,33 @@ try {
       }),
     [bundleSource],
   )
+  // 세로로 찍은 영상. 가로 영상과 섞었을 때를 보기 위한 것이다.
+  const portrait = await page.evaluate(
+    ([bundle]) =>
+      globalThis.__helpers.buildFixture({
+        bundleSource: bundle,
+        widthPx: 360,
+        heightPx: 640,
+        durationSec: 4,
+        fps: 30,
+        rotation: 0,
+      }),
+    [bundleSource],
+  )
+  // 잔 무늬가 깔린 세로 영상. 흐리게 처리했는지는 원본이 선명해야 잴 수 있다.
+  const checkered = await page.evaluate(
+    ([bundle]) =>
+      globalThis.__helpers.buildFixture({
+        bundleSource: bundle,
+        widthPx: 360,
+        heightPx: 640,
+        durationSec: 2,
+        fps: 30,
+        rotation: 0,
+        pattern: 'checker',
+      }),
+    [bundleSource],
+  )
   const photo = Array.from(makePng(160, 120))
 
   async function loadProject(entries) {
@@ -409,6 +436,152 @@ try {
     `위쪽 어두운 줄 ${containedBox.darkRows}개`,
   )
 
+  // ---------- FR-015 흐린 배경 채우기 ----------
+  // 세로로 찍은 영상을 16:9 로 내보내는 상황. 세 가지 방법이 실제로
+  // 다른 결과를 내는지 픽셀로 확인한다.
+  await loadProject([
+    { bytes: portrait.bytes, name: `세로영상.${portrait.extension}`, type: portrait.mimeType },
+  ])
+  await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()
+  await page.click('[data-testid="aspect-16:9"]')
+  await page.click('[data-testid="resolution-480"]')
+
+  await page.click('[data-testid="fit-blur"]')
+  const blurFill = await exportAndSave('blur-fill')
+  const blurFrame = await measureFrame(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile(blurFill.videoPath),
+    portrait.mimeType,
+    1,
+  )
+  console.log('  흐린 배경:', JSON.stringify(blurFrame))
+  check(
+    'FR-015 흐린 배경 채우기는 좌우 여백이 없다',
+    blurFrame.darkColumns <= 2,
+    `왼쪽 어두운 세로줄 ${blurFrame.darkColumns}개`,
+  )
+  check(
+    'FR-015 흐린 배경 채우기는 화면을 자르지 않는다',
+    blurFrame.whitePixels > 0,
+    `원본 좌상단 글자 픽셀 ${blurFrame.whitePixels}개`,
+  )
+  check(
+    'FR-015 채운 배경이 본 화면보다 흐리다',
+    blurFrame.edgeDetail < blurFrame.centerDetail,
+    `가장자리 ${blurFrame.edgeDetail.toFixed(2)} vs 가운데 ${blurFrame.centerDetail.toFixed(2)}`,
+  )
+
+  await page.click('[data-testid="fit-cover"]')
+  const coverFill = await exportAndSave('cover-fill')
+  const coverFrame = await measureFrame(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile(coverFill.videoPath),
+    portrait.mimeType,
+    1,
+  )
+  check(
+    'FR-015 잘라 채우기는 위아래가 잘린다',
+    coverFrame.whitePixels === 0 && coverFrame.darkColumns <= 2,
+    `글자 픽셀 ${coverFrame.whitePixels}개, 어두운 세로줄 ${coverFrame.darkColumns}개`,
+  )
+
+  await page.click('[data-testid="fit-contain"]')
+  const containFill = await exportAndSave('contain-fill')
+  const containFrame = await measureFrame(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile(containFill.videoPath),
+    portrait.mimeType,
+    1,
+  )
+  check(
+    'FR-015 여백 채우기는 좌우에 검은 여백이 남는다',
+    containFrame.darkColumns > 20,
+    `왼쪽 어두운 세로줄 ${containFrame.darkColumns}개`,
+  )
+
+  // 위 검사는 평평한 배경으로도 통과한다. 블러를 빼먹어도 흐려 보이므로,
+  // 잔 무늬가 깔린 영상으로 "실제로 흐려졌는지"를 따로 잰다. 같은 영상을
+  // 잘라 채우기로 내보낸 것과 비교해야 숫자에 의미가 생긴다.
+  await loadProject([
+    { bytes: checkered.bytes, name: `무늬세로.${checkered.extension}`, type: checkered.mimeType },
+  ])
+  await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()
+  await page.click('[data-testid="aspect-16:9"]')
+  await page.click('[data-testid="resolution-480"]')
+
+  await page.click('[data-testid="fit-blur"]')
+  const checkerBlur = await measureFrame(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile((await exportAndSave('checker-blur')).videoPath),
+    checkered.mimeType,
+    1,
+  )
+  await page.click('[data-testid="fit-cover"]')
+  const checkerCover = await measureFrame(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile((await exportAndSave('checker-cover')).videoPath),
+    checkered.mimeType,
+    1,
+  )
+  console.log(
+    '  무늬 영상 가장자리 선명도:',
+    `흐린 배경 ${checkerBlur.edgeDetail.toFixed(2)} / 잘라 채우기 ${checkerCover.edgeDetail.toFixed(2)}`,
+  )
+  check(
+    'FR-015 채운 배경이 실제로 흐려졌다 (잘라 채우기의 절반 이하)',
+    checkerBlur.edgeDetail < checkerCover.edgeDetail * 0.5,
+    `흐린 배경 ${checkerBlur.edgeDetail.toFixed(2)} vs 잘라 채우기 ${checkerCover.edgeDetail.toFixed(2)}`,
+  )
+
+  // 세로 영상과 가로 영상을 한 타임라인에 섞은 경우. '원본 그대로'여도
+  // 맞추는 방법이 결과를 바꾸므로 선택이 보여야 하고, 기본값이 적용돼야 한다.
+  await loadProject([
+    { bytes: clip.bytes, name: `가로영상.${clip.extension}`, type: clip.mimeType },
+    { bytes: portrait.bytes, name: `세로영상.${portrait.extension}`, type: portrait.mimeType },
+  ])
+  await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()
+  check(
+    'FR-015 화면비가 다른 클립이 섞이면 맞추는 방법이 보인다',
+    (await page.locator('[data-testid="fit-blur"]').count()) === 1,
+  )
+  check(
+    'FR-015 기본값이 흐린 배경 채우기',
+    (await page.locator('[data-testid="fit-blur"]').getAttribute('aria-pressed')) === 'true',
+  )
+
+  const mixedFill = await exportAndSave('mixed-fill')
+  // 가로 영상이 4초, 그다음이 세로 영상 구간이다.
+  const mixedFrame = await measureFrame(
+    context,
+    BASE_URL,
+    installHelpers,
+    bundleSource,
+    await readFile(mixedFill.videoPath),
+    clip.mimeType,
+    5,
+  )
+  console.log('  섞인 타임라인의 세로 구간:', JSON.stringify(mixedFrame))
+  check(
+    'FR-015 섞인 타임라인에서 세로 구간이 가로 화면을 꽉 채운다',
+    mixedFrame.darkColumns <= 2,
+    `왼쪽 어두운 세로줄 ${mixedFrame.darkColumns}개`,
+  )
+
   // ---------- AC-024 취소 ----------
   // 취소할 틈이 있으려면 일이 충분히 커야 한다. 4초짜리 여섯 개.
   await loadProject(
@@ -479,6 +652,92 @@ async function measureLetterbox(context, baseUrl, installHelpers, bundleSource, 
       return { darkRows, width: canvas.width, height: canvas.height }
     },
     [bundleSource, Array.from(bytes), mimeType],
+  )
+  await page.close()
+  return result
+}
+
+/**
+ * 한 프레임을 꺼내 채우기 방식이 실제로 다른지 본다.
+ *
+ * - darkColumns: 왼쪽에서 거의 검은 세로줄 수. 여백 채우기면 띠가 남는다.
+ * - whitePixels: 원본 좌상단의 흰 글자 픽셀 수. 잘라 채우기는 위아래가
+ *   잘려 글자가 사라진다.
+ * - edgeDetail / centerDetail: 가로 방향 밝기 변화량의 평균. 흐린 배경은
+ *   본 화면보다 변화가 작다. 선명한 복사로 채우면 이 값이 비슷해진다.
+ */
+async function measureFrame(
+  context,
+  baseUrl,
+  installHelpers,
+  bundleSource,
+  bytes,
+  mimeType,
+  time = 1,
+) {
+  const page = await context.newPage()
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' })
+  await installHelpers(page)
+  const result = await page.evaluate(
+    async ([bundle, data, mime, at]) => {
+      const url = URL.createObjectURL(new Blob([bundle], { type: 'text/javascript' }))
+      const mb = await import(url)
+      const blob = new Blob([new Uint8Array(data)], { type: mime })
+      const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS })
+      const track = await input.getPrimaryVideoTrack()
+      const sink = new mb.VideoSampleSink(track)
+      const sample = await sink.getSample(at)
+      const canvas = document.createElement('canvas')
+      canvas.width = sample.displayWidth
+      canvas.height = sample.displayHeight
+      const ctx = canvas.getContext('2d')
+      sample.draw(ctx, 0, 0)
+      sample.close()
+
+      const { width, height } = canvas
+      const pixels = ctx.getImageData(0, 0, width, height).data
+      const luma = (i) => 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]
+
+      let darkColumns = 0
+      for (let x = 0; x < Math.floor(width / 2); x += 1) {
+        let bright = 0
+        for (let y = 0; y < height; y += 1) {
+          const i = (y * width + x) * 4
+          if (pixels[i] > 24 || pixels[i + 1] > 24 || pixels[i + 2] > 24) bright += 1
+        }
+        if (bright > height * 0.02) break
+        darkColumns += 1
+      }
+
+      // 흰 글자만 센다. 파란 사각형(56,189,248)은 빨강이 낮아 걸리지 않는다.
+      let whitePixels = 0
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] > 150 && pixels[i + 1] > 150 && pixels[i + 2] > 150) whitePixels += 1
+      }
+
+      const detail = (fromX, toX) => {
+        let sum = 0
+        let count = 0
+        for (let y = 0; y < height; y += 2) {
+          for (let x = fromX; x < toX - 1; x += 1) {
+            sum += Math.abs(luma((y * width + x + 1) * 4) - luma((y * width + x) * 4))
+            count += 1
+          }
+        }
+        return count > 0 ? sum / count : 0
+      }
+
+      input.dispose()
+      return {
+        width,
+        height,
+        darkColumns,
+        whitePixels,
+        edgeDetail: detail(0, Math.floor(width * 0.12)),
+        centerDetail: detail(Math.floor(width * 0.35), Math.floor(width * 0.65)),
+      }
+    },
+    [bundleSource, Array.from(bytes), mimeType, time],
   )
   await page.close()
   return result

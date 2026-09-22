@@ -5,7 +5,15 @@
  * mediabunny 번들을 blob으로 주입해 페이지 안에서 인코딩한다.
  * 이 코드는 제품 번들에 포함되지 않는다.
  */
-export async function buildFixture({ bundleSource, widthPx, heightPx, durationSec, fps, rotation = 0 }) {
+export async function buildFixture({
+  bundleSource,
+  widthPx,
+  heightPx,
+  durationSec,
+  fps,
+  rotation = 0,
+  pattern = 'plain',
+}) {
   const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
   const mb = await import(/* @vite-ignore */ url)
 
@@ -44,6 +52,17 @@ export async function buildFixture({ bundleSource, widthPx, heightPx, durationSe
   for (let i = 0; i < frameCount; i += 1) {
     ctx.fillStyle = '#101820'
     ctx.fillRect(0, 0, widthPx, heightPx)
+    // 'checker' 는 촘촘한 격자를 깔아 화면 전체에 잔 무늬를 만든다. 흐리게
+    // 처리했는지 재려면 원본이 선명해야 한다. 평평한 배경은 흐려도 그대로다.
+    if (pattern === 'checker') {
+      const cell = 8
+      for (let y = 0; y < heightPx; y += cell) {
+        for (let x = 0; x < widthPx; x += cell) {
+          ctx.fillStyle = ((x / cell + y / cell) | 0) % 2 === 0 ? '#e2e8f0' : '#1e293b'
+          ctx.fillRect(x, y, cell, cell)
+        }
+      }
+    }
     ctx.fillStyle = '#38bdf8'
     ctx.fillRect((i / frameCount) * (widthPx - 40), heightPx / 2 - 20, 40, 40)
     ctx.fillStyle = '#ffffff'

@@ -46,6 +46,9 @@ interface AudioFormat {
 /** 무음을 한 번에 얼마씩 만들지. 너무 크면 메모리를, 너무 작으면 호출을 낭비한다. */
 const SILENCE_CHUNK_SECONDS = 0.1
 
+/** 흐린 배경을 그릴 때 원본을 몇 분의 일로 줄여 쓸지 (FR-015). */
+const BLUR_DOWNSCALE = 8
+
 export interface ComposeInput {
   timeline: TimelineItem[]
   /** 원본 id → 파일 */
@@ -111,6 +114,8 @@ export async function composeTimeline(
     const context = canvas.getContext('2d', { alpha: false })
     if (!context) throw new ExportError('unknown', '캔버스를 만들 수 없습니다.')
 
+    const blur = input.setting.fitMode === 'blur' ? createBlurLayer(width, height) : null
+
     const isMp4 = input.profile.id === 'mp4-h264-aac'
     const output = new Output({
       format: isMp4 ? new Mp4OutputFormat() : new WebMOutputFormat(),
@@ -143,6 +148,7 @@ export async function composeTimeline(
         openInput,
         canvas,
         context,
+        blur,
         videoSource,
         audioSource,
         audioFormat,
@@ -214,6 +220,8 @@ interface RenderContext {
   openInput: (sourceId: string) => Input
   canvas: OffscreenCanvas
   context: OffscreenCanvasRenderingContext2D
+  /** '흐린 배경 채우기'일 때만 있다 */
+  blur: BlurLayer | null
   videoSource: CanvasSource
   audioSource: AudioSampleSource
   audioFormat: AudioFormat
@@ -277,10 +285,7 @@ async function drawVideoFrames({
 
     const offset = Math.max(0, sample.timestamp - item.inPoint)
     const timestamp = segment.start + offset
-    const duration = Math.min(
-      Math.max(sample.duration, 1 / 60),
-      segment.end - timestamp,
-    )
+    const duration = Math.min(Math.max(sample.duration, 1 / 60), segment.end - timestamp)
     if (duration <= 0) {
       sample.close()
       continue
@@ -288,8 +293,12 @@ async function drawVideoFrames({
 
     ctx.context.fillStyle = '#000000'
     ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-    // 여백 채우기(contain) 또는 잘라 채우기(cover). 회전도 함께 처리된다 (FR-015).
-    sample.drawWithFit(ctx.context, { fit: ctx.input.setting.fitMode })
+    // 여백·잘라·흐린 배경 채우기. 회전도 drawWithFit 이 함께 처리한다 (FR-015).
+    if (ctx.blur) {
+      sample.drawWithFit(ctx.blur.context, { fit: 'cover' })
+      paintBlurBackground(ctx.context, ctx.blur, ctx.canvas.width, ctx.canvas.height)
+    }
+    sample.drawWithFit(ctx.context, { fit: foregroundFit(ctx.input.setting.fitMode) })
     sample.close()
 
     paintSubtitle(ctx, segment, item.inPoint + offset)
@@ -329,7 +338,23 @@ async function renderStillSegment(ctx: RenderContext): Promise<void> {
     ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
 
     if (bitmap) {
-      drawWithFit(ctx.context, bitmap, ctx.canvas.width, ctx.canvas.height, ctx.input.setting.fitMode)
+      if (ctx.blur) {
+        drawWithFit(
+          ctx.blur.context,
+          bitmap,
+          ctx.blur.canvas.width,
+          ctx.blur.canvas.height,
+          'cover',
+        )
+        paintBlurBackground(ctx.context, ctx.blur, ctx.canvas.width, ctx.canvas.height)
+      }
+      drawWithFit(
+        ctx.context,
+        bitmap,
+        ctx.canvas.width,
+        ctx.canvas.height,
+        foregroundFit(ctx.input.setting.fitMode),
+      )
     }
     paintSubtitle(ctx, segment, offset)
 
@@ -341,6 +366,59 @@ async function renderStillSegment(ctx: RenderContext): Promise<void> {
 
   // 사진과 빈 화면은 소리가 없다. 길이만큼 무음을 넣어 뒤 구간을 밀지 않는다.
   await writeSilence(ctx.audioSource, ctx.audioFormat, segment.start, length)
+}
+
+interface BlurLayer {
+  canvas: OffscreenCanvas
+  context: OffscreenCanvasRenderingContext2D
+  radius: number
+  /** 블러가 캔버스 밖을 물어 가장자리가 어두워지는 것을 막는 여유 */
+  margin: number
+}
+
+/** 흐린 배경용 작은 캔버스. 크게 잡으면 프레임마다 블러가 느려진다. */
+function createBlurLayer(width: number, height: number): BlurLayer | null {
+  const canvas = new OffscreenCanvas(
+    Math.max(16, Math.round(width / BLUR_DOWNSCALE)),
+    Math.max(16, Math.round(height / BLUR_DOWNSCALE)),
+  )
+  const context = canvas.getContext('2d', { alpha: false })
+  if (!context) return null
+  const radius = Math.max(6, Math.round(height / 45))
+  return { canvas, context, radius, margin: radius * 2 }
+}
+
+/**
+ * 남는 자리를 원본을 흐리게 키운 것으로 채운다 (FR-015).
+ *
+ * 세로 영상을 가로 화면비로 내보낼 때 검은 여백보다 자연스럽고, 잘라 채우기와
+ * 달리 화면이 잘리지 않는다.
+ *
+ * 1/8 로 줄인 캔버스에 잘라 채우기로 그린 뒤 다시 키운다. 줄였다 키우는 것만으로
+ * 이미 흐려지므로, 큰 캔버스에 블러를 거는 것보다 훨씬 빠르고 결과는 비슷하다.
+ * `filter` 를 지원하지 않는 브라우저에서는 확대로 인한 흐림만 남는다.
+ */
+function paintBlurBackground(
+  context: OffscreenCanvasRenderingContext2D,
+  layer: BlurLayer,
+  width: number,
+  height: number,
+): void {
+  context.save()
+  context.filter = `blur(${layer.radius}px)`
+  context.drawImage(
+    layer.canvas,
+    -layer.margin,
+    -layer.margin,
+    width + layer.margin * 2,
+    height + layer.margin * 2,
+  )
+  context.restore()
+}
+
+/** 흐린 배경 채우기는 배경만 다르고 본 화면은 여백 채우기와 같게 그린다. */
+function foregroundFit(fit: ExportSetting['fitMode']): 'contain' | 'cover' {
+  return fit === 'cover' ? 'cover' : 'contain'
 }
 
 /** 사진을 여백 채우기 또는 잘라 채우기로 그린다. 영상 쪽 drawWithFit 과 같은 규칙이다. */

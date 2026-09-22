@@ -113,13 +113,13 @@ export const MAX_SUBTITLE_LENGTH = 200
 
 /** 출력 설정 (PRD 8절, FR-014~017) */
 export type AspectRatio = '16:9' | '9:16' | '1:1' | 'source'
-export type FitMode = 'contain' | 'cover'
+export type FitMode = 'contain' | 'cover' | 'blur'
 export type Resolution = 2160 | 1440 | 1080 | 720 | 480
 export type QualityLevel = 'high' | 'medium' | 'low'
 
 export interface ExportSetting {
   aspectRatio: AspectRatio
-  /** contain = 여백 채우기, cover = 잘라 채우기 */
+  /** contain = 여백 채우기, cover = 잘라 채우기, blur = 흐린 배경 채우기 */
   fitMode: FitMode
   /** 출력 세로 해상도 */
   resolution: Resolution
@@ -128,9 +128,16 @@ export interface ExportSetting {
   fps: number
 }
 
+/**
+ * 기본값은 '흐린 배경 채우기'다.
+ *
+ * 세로 영상과 가로 영상을 한 타임라인에 섞으면 어느 쪽이든 화면비가 맞지 않는
+ * 구간이 생긴다. 검은 여백은 눈에 거슬리고 잘라 채우기는 화면을 잘라내므로,
+ * 셋 중에 잘리지도 않고 여백도 남지 않는 쪽을 기본으로 둔다.
+ */
 export const DEFAULT_EXPORT_SETTING: ExportSetting = {
   aspectRatio: 'source',
-  fitMode: 'contain',
+  fitMode: 'blur',
   resolution: 1080,
   quality: 'medium',
   fps: 30,

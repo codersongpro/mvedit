@@ -4,6 +4,7 @@ import { segmentAt, sourceTimeAt, toSegments } from '../lib/project/playback'
 import { subtitleAt } from '../lib/project/subtitles'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { timelineDuration } from '../lib/project/types'
+import { computeOutputSize } from '../lib/media/outputSize'
 import { formatClock } from '../lib/format'
 
 /** 영상 시각이 이보다 어긋나면 맞춰 준다. 매 프레임 맞추면 재생이 끊긴다. */
@@ -29,6 +30,7 @@ export function Preview() {
 
   const subtitles = useProject((state) => state.subtitles)
   const subtitleStyle = useProject((state) => state.subtitleStyle)
+  const exportSetting = useProject((state) => state.exportSetting)
 
   const segments = useMemo(() => toSegments(timeline), [timeline])
   const total = timelineDuration(timeline)
@@ -39,9 +41,24 @@ export function Preview() {
     : null
 
   const videoRefs = useRef(new Map<string, HTMLVideoElement>())
+  const imageRef = useRef<HTMLImageElement | null>(null)
+  const backdropRef = useRef<HTMLCanvasElement | null>(null)
   const playheadRef = useRef(playhead)
   const lastTickRef = useRef(0)
   playheadRef.current = playhead
+
+  // 미리보기도 내보내기와 같은 화면비·맞추는 방법을 쓴다. 그러지 않으면
+  // 내보낸 뒤에야 여백이나 잘림을 발견한다.
+  const outputSize = useMemo(() => {
+    const first = sources.find((source) => source.kind === 'video')
+    const sourceSize = first
+      ? { width: first.displayWidth, height: first.displayHeight }
+      : { width: 1280, height: 720 }
+    return computeOutputSize(exportSetting, sourceSize)
+  }, [sources, exportSetting])
+
+  const fitClass = exportSetting.fitMode === 'cover' ? 'object-cover' : 'object-contain'
+  const blurred = exportSetting.fitMode === 'blur'
 
   // 원본마다 한 번만 만들고 정리한다. 같은 파일에 URL 을 여러 번 만들면 샌다.
   const objectUrls = useMemo(() => {
@@ -51,6 +68,57 @@ export function Preview() {
   }, [sources])
 
   useEffect(() => () => objectUrls.forEach((url) => URL.revokeObjectURL(url)), [objectUrls])
+
+  /**
+   * 흐린 배경을 작은 캔버스에 그린다.
+   *
+   * 영상 요소를 하나 더 두면 같은 파일을 두 번 디코딩하고 두 재생이 서로
+   * 어긋난다. 지금 보이는 요소에서 한 장을 떠 작은 캔버스에 잘라 채우고
+   * CSS 로 흐리게 키우는 쪽이 싸고 정확하다. 내보내기 쪽과 같은 방식이다.
+   */
+  const paintBackdrop = useCallback(() => {
+    const canvas = backdropRef.current
+    if (!canvas) return
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    const item = current?.item
+    if (item?.type === 'blank') {
+      context.fillStyle = item.color
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+
+    const media =
+      item?.type === 'video'
+        ? (videoRefs.current.get(item.sourceId ?? '') ?? null)
+        : imageRef.current
+    const mediaWidth =
+      media instanceof HTMLVideoElement ? media.videoWidth : (media?.naturalWidth ?? 0)
+    const mediaHeight =
+      media instanceof HTMLVideoElement ? media.videoHeight : (media?.naturalHeight ?? 0)
+    if (!media || mediaWidth === 0 || mediaHeight === 0) return
+
+    const scale = Math.max(canvas.width / mediaWidth, canvas.height / mediaHeight)
+    const drawWidth = mediaWidth * scale
+    const drawHeight = mediaHeight * scale
+    try {
+      context.drawImage(
+        media,
+        (canvas.width - drawWidth) / 2,
+        (canvas.height - drawHeight) / 2,
+        drawWidth,
+        drawHeight,
+      )
+    } catch {
+      // 아직 그릴 수 있는 프레임이 없을 때. 다음 프레임에 다시 시도한다.
+    }
+  }, [current])
+
+  // 재생 중에는 playhead 가 매 프레임 바뀌므로 이 효과가 계속 다시 돈다.
+  useEffect(() => {
+    if (blurred) paintBackdrop()
+  }, [blurred, paintBackdrop, playhead])
 
   /** 지금 구간이 아닌 영상은 모두 멈춘다. 소리가 겹쳐 들리면 안 된다. */
   const pauseOthers = useCallback((exceptId: string | null) => {
@@ -171,9 +239,27 @@ export function Preview() {
         data-testid="preview"
         data-active-kind={kind}
         data-active-source={currentSource?.fileName ?? ''}
-        style={{ containerType: 'size' }}
-        className="relative aspect-video w-full overflow-hidden rounded-xl bg-black"
+        data-fit={exportSetting.fitMode}
+        style={{
+          containerType: 'size',
+          aspectRatio: `${outputSize.width} / ${outputSize.height}`,
+          // 세로로 긴 출력은 화면을 넘지 않게 가로를 줄인다. 높이만 제한하면
+          // 가로가 그대로 남아 비율이 깨진다.
+          maxWidth: `calc(70vh * ${outputSize.width / outputSize.height})`,
+        }}
+        className="relative mx-auto w-full overflow-hidden rounded-xl bg-black"
       >
+        {blurred && (
+          <canvas
+            ref={backdropRef}
+            data-testid="preview-backdrop"
+            width={64}
+            height={Math.max(16, Math.round((64 * outputSize.height) / outputSize.width))}
+            aria-hidden
+            className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl"
+          />
+        )}
+
         {sources
           .filter((source) => source.kind === 'video')
           .map((source) => (
@@ -186,9 +272,8 @@ export function Preview() {
               src={objectUrls.get(source.id)}
               preload="auto"
               playsInline
-              // 화면 비율이 달라도 잘리지 않게 여백을 둔다. 내보내기의
-              // '여백 채우기' 와 같은 방식이다.
-              className={`absolute inset-0 h-full w-full object-contain ${
+              // 내보내기에서 고른 맞추는 방법을 그대로 쓴다.
+              className={`absolute inset-0 h-full w-full ${fitClass} ${
                 current?.item.sourceId === source.id && kind === 'video' ? '' : 'hidden'
               }`}
             />
@@ -196,9 +281,11 @@ export function Preview() {
 
         {kind === 'image' && currentSource && (
           <img
+            ref={imageRef}
             src={objectUrls.get(currentSource.id)}
             alt=""
-            className="absolute inset-0 h-full w-full object-contain"
+            onLoad={paintBackdrop}
+            className={`absolute inset-0 h-full w-full ${fitClass}`}
           />
         )}
 
@@ -210,9 +297,7 @@ export function Preview() {
           />
         )}
 
-        {currentSubtitle && (
-          <SubtitleOverlay text={currentSubtitle.text} style={subtitleStyle} />
-        )}
+        {currentSubtitle && <SubtitleOverlay text={currentSubtitle.text} style={subtitleStyle} />}
       </div>
 
       <div className="flex items-center gap-3">

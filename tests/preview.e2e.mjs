@@ -91,22 +91,29 @@ try {
     page.$eval('[data-testid="playhead"]', (node) => Number(node.dataset.seconds))
   const activeSource = () =>
     page.$eval('[data-testid="preview"]', (node) => node.dataset.activeSource)
-  const activeKind = () =>
-    page.$eval('[data-testid="preview"]', (node) => node.dataset.activeKind)
+  const activeKind = () => page.$eval('[data-testid="preview"]', (node) => node.dataset.activeKind)
   const names = () =>
     page.$$eval('[data-testid="clip"]', (nodes) => nodes.map((node) => node.dataset.source))
 
   // ---------- 기본 재생 ----------
   await load([`가.${clip.extension}`, `나.${clip.extension}`, `다.${clip.extension}`])
   check('미리보기 화면 표시', (await page.locator('[data-testid="preview"]').count()) === 1)
-  check('시작 시 첫 클립이 활성', (await activeSource()) === `가.${clip.extension}`, await activeSource())
+  check(
+    '시작 시 첫 클립이 활성',
+    (await activeSource()) === `가.${clip.extension}`,
+    await activeSource(),
+  )
 
   await page.click('[data-testid="play-toggle"]')
   await page.waitForFunction(
     () => Number(document.querySelector('[data-testid="playhead"]').dataset.seconds) > 0.4,
     { timeout: 15_000 },
   )
-  check('재생하면 재생헤드가 움직인다', (await playhead()) > 0.4, `${(await playhead()).toFixed(2)}초`)
+  check(
+    '재생하면 재생헤드가 움직인다',
+    (await playhead()) > 0.4,
+    `${(await playhead()).toFixed(2)}초`,
+  )
 
   await page.click('[data-testid="play-toggle"]')
   const paused = await playhead()
@@ -124,7 +131,11 @@ try {
   await page.locator('[data-testid="clip"]').nth(1).click()
   await page.click('[data-testid="move-back"]')
   const expected = await names()
-  check('AC-014 준비: 편집 후 순서 다,가', expected.join() === `다.${clip.extension},가.${clip.extension}`, expected.join())
+  check(
+    'AC-014 준비: 편집 후 순서 다,가',
+    expected.join() === `다.${clip.extension},가.${clip.extension}`,
+    expected.join(),
+  )
 
   // 처음부터 재생하며 어떤 원본이 언제 보이는지 기록한다.
   await page.locator('[data-testid="ruler"]').scrollIntoViewIfNeeded()
@@ -148,7 +159,10 @@ try {
       if (head >= total - 0.1) break
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    return { seen, playhead: Number(document.querySelector('[data-testid="playhead"]').dataset.seconds) }
+    return {
+      seen,
+      playhead: Number(document.querySelector('[data-testid="playhead"]').dataset.seconds),
+    }
   })
 
   check(
@@ -164,7 +178,8 @@ try {
   // 관찰 루프는 앱이 멈추기 직전에 빠져나온다. 실제로 멈추는지 기다려 확인한다.
   const stopped = await page
     .waitForFunction(
-      () => document.querySelector('[data-testid="play-toggle"]').getAttribute('aria-label') === '재생',
+      () =>
+        document.querySelector('[data-testid="play-toggle"]').getAttribute('aria-label') === '재생',
       { timeout: 5_000 },
     )
     .then(() => true)
@@ -173,7 +188,9 @@ try {
 
   // ---------- 빈 화면·사진 구간 ----------
   await load([`가.${clip.extension}`, `나.${clip.extension}`])
-  const scale = await page.$eval('[data-testid="timeline"]', (node) => Number(node.dataset.pxPerSecond))
+  const scale = await page.$eval('[data-testid="timeline"]', (node) =>
+    Number(node.dataset.pxPerSecond),
+  )
   await page.locator('[data-testid="ruler"]').scrollIntoViewIfNeeded()
   const ruler = await page.locator('[data-testid="ruler"]').boundingBox()
   await page.mouse.click(ruler.x + 3 * scale, ruler.y + ruler.height / 2)
@@ -182,12 +199,47 @@ try {
   await page.click('[data-testid="blank-color-FFFFFF"]')
 
   // 빈 화면 한가운데(4초)로 옮기면 미리보기가 빈 화면이어야 한다.
-  await page.mouse.click(ruler.x + 4 * (await page.$eval('[data-testid="timeline"]', (n) => Number(n.dataset.pxPerSecond))), ruler.y + ruler.height / 2)
+  await page.mouse.click(
+    ruler.x +
+      4 * (await page.$eval('[data-testid="timeline"]', (n) => Number(n.dataset.pxPerSecond))),
+    ruler.y + ruler.height / 2,
+  )
   check('빈 화면 구간에서 미리보기가 빈 화면', (await activeKind()) === 'blank', await activeKind())
-  const blankColor = await page.$eval('[data-testid="preview-blank"]', (node) =>
-    getComputedStyle(node).backgroundColor,
+  const blankColor = await page.$eval(
+    '[data-testid="preview-blank"]',
+    (node) => getComputedStyle(node).backgroundColor,
   )
   check('빈 화면 색이 미리보기에 반영', blankColor === 'rgb(255, 255, 255)', blankColor)
+
+  // ---------- FR-015 미리보기가 출력 설정을 따른다 ----------
+  await load([`가.${clip.extension}`])
+  await page.locator('[data-testid="export-settings"]').scrollIntoViewIfNeeded()
+  await page.click('[data-testid="aspect-9:16"]')
+  const previewRatio = () =>
+    page.$eval('[data-testid="preview"]', (node) => {
+      const box = node.getBoundingClientRect()
+      return box.width / box.height
+    })
+  check(
+    '9:16 을 고르면 미리보기도 세로로 바뀐다',
+    Math.abs((await previewRatio()) - 9 / 16) < 0.02,
+    (await previewRatio()).toFixed(3),
+  )
+  check(
+    '흐린 배경 채우기면 배경 캔버스가 있다',
+    (await page.locator('[data-testid="preview-backdrop"]').count()) === 1,
+  )
+  await page.click('[data-testid="fit-contain"]')
+  check(
+    '여백 채우기로 바꾸면 배경 캔버스가 사라진다',
+    (await page.locator('[data-testid="preview-backdrop"]').count()) === 0,
+  )
+  await page.click('[data-testid="aspect-source"]')
+  check(
+    "'원본 그대로'면 미리보기가 원본 비율",
+    Math.abs((await previewRatio()) - 160 / 120) < 0.02,
+    (await previewRatio()).toFixed(3),
+  )
 
   // ---------- 음소거 ----------
   await load([`가.${clip.extension}`])
