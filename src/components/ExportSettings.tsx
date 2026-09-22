@@ -226,11 +226,17 @@ export function ExportSettings() {
   )
 }
 
+/**
+ * 이름표 + 고르는 것들 한 줄.
+ *
+ * 좁은 화면에서는 이름표를 위로 올린다. 한 줄에 같이 두면 버튼이 이름표 옆에서
+ * 시작했다가 다음 줄은 맨 왼쪽에서 시작해, 줄마다 들쭉날쭉하게 보인다.
+ */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="w-24 shrink-0 text-xs text-slate-400">{label}</span>
-      {children}
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <span className="text-xs text-slate-400 sm:w-24 sm:shrink-0">{label}</span>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   )
 }
