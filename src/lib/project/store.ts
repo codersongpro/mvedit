@@ -238,9 +238,19 @@ export const useProject = create<ProjectState>((set, get) => {
         exportSetting: payload.exportSetting,
       }),
 
-    select: (id) => set({ selectedItemId: id }),
+    // 클립과 자막은 한 번에 하나만 고른다. 둘 다 골라져 있으면 Delete 가
+    // 무엇을 지울지 사용자가 알 수 없다. 마지막에 고른 쪽이 대상이다.
+    select: (id) =>
+      set((state) => ({
+        selectedItemId: id,
+        selectedSubtitleId: id ? null : state.selectedSubtitleId,
+      })),
 
-    selectSubtitle: (id) => set({ selectedSubtitleId: id }),
+    selectSubtitle: (id) =>
+      set((state) => ({
+        selectedSubtitleId: id,
+        selectedItemId: id ? null : state.selectedItemId,
+      })),
 
     setPlayhead: (seconds) =>
       set((state) => ({ playhead: clampPlayhead(state.timeline, seconds) })),
@@ -292,7 +302,11 @@ export const useProject = create<ProjectState>((set, get) => {
     },
 
     removeSelected: () => {
-      const { timeline, selectedItemId } = get()
+      const { timeline, selectedItemId, selectedSubtitleId } = get()
+      if (selectedSubtitleId) {
+        get().removeSubtitle(selectedSubtitleId)
+        return
+      }
       if (!selectedItemId) return
       commit(removeItem(timeline, selectedItemId))
     },
@@ -327,7 +341,7 @@ export const useProject = create<ProjectState>((set, get) => {
         text,
       }
       commit(get().timeline, [...get().subtitles, subtitle])
-      set({ selectedSubtitleId: subtitle.id })
+      get().selectSubtitle(subtitle.id)
     },
 
     updateSubtitle: (id, patch) => {

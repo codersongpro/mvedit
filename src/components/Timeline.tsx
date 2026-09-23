@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { findSource, useProject } from '../lib/project/store'
 import { MIN_CLIP_SECONDS, type TrimEdge } from '../lib/project/edit'
 import { toSegments } from '../lib/project/playback'
@@ -12,7 +13,7 @@ import {
   type TimelineItem,
 } from '../lib/project/types'
 import { formatClock } from '../lib/format'
-import { AddCircleIcon, DoNotDisturbOnIcon } from './icons'
+import { AddCircleIcon, DeleteIcon, DoNotDisturbOnIcon } from './icons'
 import { btn } from './m3'
 
 // 1초를 1픽셀로 보면 한 시간짜리 영상도 한눈에 들어오고,
@@ -24,6 +25,11 @@ const DEFAULT_PX_PER_SECOND = 40
 const TRACK_HEIGHT = 92
 const SUBTITLE_LANE_HEIGHT = 32
 const ZOOM_STEP = 1.6
+
+/** 이만큼 누르고 있으면 길게 누른 것으로 본다. 안드로이드 기본값과 같다. */
+const LONG_PRESS_MS = 500
+/** 누른 채 이보다 많이 움직이면 타임라인을 미는 것이다. 길게 누르기가 아니다. */
+const LONG_PRESS_SLOP = 10
 
 /** 재생헤드가 가장자리 이만큼 안쪽으로 들어오면 화면을 민다. */
 const FOLLOW_MARGIN = 24
@@ -44,6 +50,7 @@ export function Timeline() {
   const selectedSubtitleId = useProject((state) => state.selectedSubtitleId)
   const selectSubtitle = useProject((state) => state.selectSubtitle)
   const updateSubtitle = useProject((state) => state.updateSubtitle)
+  const removeSubtitle = useProject((state) => state.removeSubtitle)
 
   const [pxPerSecond, setPxPerSecond] = useState(DEFAULT_PX_PER_SECOND)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -310,6 +317,7 @@ export function Timeline() {
                         : { end: subtitle.end + deltaSeconds },
                     )
                   }
+                  onRemove={() => removeSubtitle(subtitle.id)}
                 />
               ))}
             </div>
@@ -599,6 +607,7 @@ function SubtitleBlock({
   selected,
   onSelect,
   onTrim,
+  onRemove,
 }: {
   subtitle: Subtitle
   left: number
@@ -607,8 +616,21 @@ function SubtitleBlock({
   selected: boolean
   onSelect: () => void
   onTrim: (edge: TrimEdge, deltaSeconds: number) => void
+  onRemove: () => void
 }) {
   const [draft, setDraft] = useState<{ edge: TrimEdge; deltaPx: number } | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const blockRef = useRef<HTMLDivElement>(null)
+  const pressRef = useRef<{ timer: number; x: number; y: number } | null>(null)
+
+  const openMenu = () => setMenuOpen(true)
+
+  const cancelPress = () => {
+    if (pressRef.current) window.clearTimeout(pressRef.current.timer)
+    pressRef.current = null
+  }
+
+  useEffect(() => cancelPress, [])
 
   const deltaSeconds = draft ? draft.deltaPx / pxPerSecond : 0
   const previewLeft = draft?.edge === 'start' ? left + deltaSeconds : left
@@ -658,12 +680,40 @@ function SubtitleBlock({
       data-selected={selected ? 'true' : 'false'}
       data-start={subtitle.start.toFixed(3)}
       data-end={subtitle.end.toFixed(3)}
-      onPointerDown={onSelect}
+      ref={blockRef}
+      onPointerDown={(event) => {
+        onSelect()
+        cancelPress()
+        pressRef.current = {
+          timer: window.setTimeout(openMenu, LONG_PRESS_MS),
+          x: event.clientX,
+          y: event.clientY,
+        }
+      }}
+      onPointerMove={(event) => {
+        const press = pressRef.current
+        if (
+          press &&
+          Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_SLOP
+        ) {
+          cancelPress()
+        }
+      }}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
+      // 오른쪽 클릭과 안드로이드의 길게 누르기는 이 이벤트로 온다. 브라우저
+      // 기본 메뉴(복사·검색 등)는 여기서 쓸모가 없으므로 막고 우리 메뉴를 띄운다.
+      onContextMenu={(event) => {
+        event.preventDefault()
+        cancelPress()
+        openMenu()
+      }}
       style={{
         left: `${previewLeft * pxPerSecond}px`,
         width: `${Math.max(previewWidth * pxPerSecond, 8)}px`,
       }}
-      className={`absolute inset-y-0.5 flex items-center overflow-hidden rounded-m3-sm bg-secondary-container px-2 text-on-secondary-container transition-colors duration-100 ease-m3 ${
+      // 아이폰은 길게 누르면 글자 선택과 공유 풍선을 띄운다. 그러면 우리 메뉴가 가려진다.
+      className={`absolute inset-y-0.5 flex items-center overflow-hidden rounded-m3-sm bg-secondary-container px-2 text-on-secondary-container transition-colors duration-100 ease-m3 select-none [-webkit-touch-callout:none] ${
         selected ? 'outline-2 -outline-offset-2 outline-secondary' : ''
       }`}
     >
@@ -683,6 +733,100 @@ function SubtitleBlock({
           />
         </>
       )}
+
+      {menuOpen && (
+        <SubtitleMenu
+          anchorRef={blockRef}
+          onClose={() => setMenuOpen(false)}
+          onRemove={() => {
+            setMenuOpen(false)
+            onRemove()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * 자막을 길게 눌렀을 때 뜨는 메뉴.
+ *
+ * 타임라인은 가로로 스크롤되는 상자라 그 안에 띄우면 위아래가 잘린다.
+ * 문서 맨 위에 붙여 화면 좌표로 띄운다. 스크롤하면 자막을 따라 옮긴다.
+ * 스크롤에 닫아 버리면, 자막을 고르며 재생헤드를 따라 타임라인이 밀리는
+ * 순간에 메뉴가 뜨자마자 사라진다.
+ */
+function SubtitleMenu({
+  anchorRef,
+  onClose,
+  onRemove,
+}: {
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  onClose: () => void
+  onRemove: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [, relayout] = useState(0)
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) onClose()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('keydown', onKeyDown)
+    const follow = () => relayout((count) => count + 1)
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', follow, true)
+      window.removeEventListener('resize', follow)
+    }
+  }, [onClose])
+
+  const anchor = anchorRef.current?.getBoundingClientRect()
+  if (!anchor) return null
+
+  const MENU_WIDTH = 160
+  const MENU_HEIGHT = 56
+  // 손가락에 가리지 않게 자막 위에 띄운다. 화면 위 끝에 걸리면 아래로 내린다.
+  const above = anchor.top - MENU_HEIGHT - 8
+  const top = above >= 8 ? above : anchor.bottom + 8
+  const left = Math.min(
+    Math.max(8, anchor.left + anchor.width / 2 - MENU_WIDTH / 2),
+    window.innerWidth - MENU_WIDTH - 8,
+  )
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      data-testid="subtitle-menu"
+      style={{ top, left, width: MENU_WIDTH }}
+      // 포털이어도 리액트 이벤트는 컴포넌트 트리를 따라 자막 덩이까지 올라간다.
+      // 그러면 메뉴를 누를 때마다 자막을 다시 고르고 길게 누르기를 새로 잰다.
+      onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      className="fixed z-50 overflow-hidden rounded-m3-xs bg-surface-container py-1 shadow-m3-2"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        data-testid="subtitle-menu-delete"
+        onClick={onRemove}
+        className="state-layer flex h-12 w-full items-center gap-3 px-3 m3-label-large text-on-surface"
+      >
+        <DeleteIcon size={20} className="text-on-surface-variant" />
+        자막 지우기
+      </button>
+    </div>,
+    document.body,
   )
 }

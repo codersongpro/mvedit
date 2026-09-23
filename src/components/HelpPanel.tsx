@@ -6,13 +6,14 @@ const TIPS = [
   '눈금이나 클립을 눌러 재생 위치를 옮깁니다.',
   '클립을 고르면 양 끝을 끌어 길이를 줄이거나 늘릴 수 있습니다.',
   '자막도 타임라인에서 양 끝을 끌어 시작과 끝을 맞출 수 있습니다.',
+  '타임라인의 자막을 길게 누르면(마우스는 오른쪽 클릭) 지우기 메뉴가 뜹니다.',
   '두 손가락으로 벌리거나 Ctrl+휠로 타임라인을 확대합니다.',
 ]
 
 const SHORTCUTS = [
   { keys: 'Space', action: '재생 / 정지' },
   { keys: 'S', action: '재생 위치에서 자르기' },
-  { keys: 'Delete', action: '고른 클립 지우기' },
+  { keys: 'Delete', action: '고른 클립·자막 지우기' },
   { keys: '← →', action: '한 프레임 이동' },
   { keys: 'Ctrl+Z', action: '되돌리기' },
   { keys: 'Ctrl+Shift+Z', action: '다시 실행' },

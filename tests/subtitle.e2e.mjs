@@ -304,6 +304,81 @@ try {
   await dragSubtitle('end', 30)
   check('자막이 클립 끝을 넘지 않는다', (await blockEnd()) <= 10.01, `${(await blockEnd()).toFixed(2)}초`)
 
+  // ---------- AC-047 타임라인에서 자막 지우기 ----------
+  const blockCount = () => page.locator('[data-testid="subtitle-block"]').count()
+  const clipCount = () => page.locator('[data-testid="clip"]').count()
+  const blockCenter = async () => {
+    const box = await page.locator('[data-testid="subtitle-block"]').boundingBox()
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  }
+
+  // 고르고 Delete. 클립이 아니라 고른 자막이 지워져야 한다.
+  await page.locator('[data-testid="clip"]').click()
+  await page.locator('[data-testid="subtitle-block"]').click()
+  await page.keyboard.press('Delete')
+  check(
+    'AC-047 자막을 고르고 Delete 를 누르면 자막이 지워진다',
+    (await blockCount()) === 0 && (await rowCount()) === 0,
+    `타임라인 ${await blockCount()}개 / 목록 ${await rowCount()}개`,
+  )
+  check('AC-047 클립은 그대로 남는다', (await clipCount()) === 1, `${await clipCount()}개`)
+  await page.keyboard.press('Control+z')
+  check('AC-047 지운 자막을 되돌릴 수 있다', (await blockCount()) === 1)
+
+  // 길게 누르면 지우기 메뉴가 뜬다. 손을 떼도 메뉴는 남아 있어야 누를 수 있다.
+  const center = await blockCenter()
+  await page.mouse.move(center.x, center.y)
+  await page.mouse.down()
+  await new Promise((resolve) => setTimeout(resolve, 700))
+  await page.mouse.up()
+  check(
+    'AC-047 길게 누르면 지우기 메뉴가 뜬다',
+    await page.locator('[data-testid="subtitle-menu-delete"]').isVisible(),
+  )
+  await page.click('[data-testid="subtitle-menu-delete"]')
+  check(
+    'AC-047 메뉴에서 지우면 자막이 지워지고 메뉴가 닫힌다',
+    (await blockCount()) === 0 &&
+      (await page.locator('[data-testid="subtitle-menu"]').count()) === 0,
+  )
+  await page.keyboard.press('Control+z')
+
+  // 짧게 누르는 것은 고르기일 뿐이다.
+  await page.locator('[data-testid="subtitle-block"]').click()
+  check(
+    'AC-047 짧게 누르면 메뉴가 뜨지 않는다',
+    (await page.locator('[data-testid="subtitle-menu"]').count()) === 0,
+  )
+
+  // 마우스는 오른쪽 클릭으로 같은 메뉴를 연다. 다른 곳을 누르면 닫힌다.
+  await page.locator('[data-testid="subtitle-block"]').click({ button: 'right' })
+  check(
+    'AC-047 오른쪽 클릭으로도 메뉴가 뜬다',
+    await page.locator('[data-testid="subtitle-menu-delete"]').isVisible(),
+  )
+  await page.mouse.click(5, 5)
+  check(
+    'AC-047 다른 곳을 누르면 메뉴가 닫히고 자막은 남는다',
+    (await page.locator('[data-testid="subtitle-menu"]').count()) === 0 &&
+      (await blockCount()) === 1,
+  )
+
+  // 도구 바의 지우기 버튼도 고른 자막을 지운다.
+  await page.locator('[data-testid="subtitle-block"]').click()
+  await page.click('[data-testid="delete"]')
+  check(
+    'AC-047 도구 바 지우기 버튼도 고른 자막을 지운다',
+    (await blockCount()) === 0 && (await clipCount()) === 1,
+    `자막 ${await blockCount()}개 / 클립 ${await clipCount()}개`,
+  )
+  await page.click('[data-testid="undo"]')
+
+  // 클립을 다시 고르면 Delete 는 클립을 지운다. 마지막에 고른 쪽이 대상이다.
+  await page.locator('[data-testid="clip"]').click()
+  await page.keyboard.press('Delete')
+  check('AC-047 클립을 고른 뒤 Delete 는 클립을 지운다', (await clipCount()) === 0)
+  await page.keyboard.press('Control+z')
+
   // ---------- 도움말 / 버튼 이름 ----------
   check(
     '긴 조작 설명이 화면에서 사라짐',

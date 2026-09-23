@@ -19,6 +19,7 @@ export const FRAME_STEP = 1 / 30
 export function EditToolbar({ nowrap }: { nowrap?: boolean } = {}) {
   const timeline = useProject((state) => state.timeline)
   const selectedItemId = useProject((state) => state.selectedItemId)
+  const selectedSubtitleId = useProject((state) => state.selectedSubtitleId)
   const past = useProject((state) => state.past)
   const future = useProject((state) => state.future)
 
@@ -63,7 +64,8 @@ export function EditToolbar({ nowrap }: { nowrap?: boolean } = {}) {
         type="button"
         data-testid="delete"
         onClick={removeSelected}
-        disabled={!hasSelection}
+        // 타임라인에서 고른 자막도 같은 버튼으로 지운다.
+        disabled={!hasSelection && !selectedSubtitleId}
         className={`${btn.outlined} h-11 pr-5 pl-4`}
       >
         <DeleteIcon size={20} />

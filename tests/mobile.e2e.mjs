@@ -260,6 +260,45 @@ try {
     (await page.getAttribute('[data-testid="play-toggle"]', 'aria-label')) === '재생',
   )
 
+  // ---------- AC-047 손가락으로 길게 눌러 자막 지우기 ----------
+  // 마우스와 달리 실제 터치는 브라우저가 길게 누르기를 가로채 글자 선택이나
+  // 기본 메뉴를 띄울 수 있다. CDP 로 진짜 터치를 보내 확인한다.
+  await page.evaluate(() => document.activeElement?.blur())
+  await page.locator('[data-testid="subtitle-block"]').evaluate((node) => {
+    // 위에는 미리보기가, 아래에는 도구 바가 붙어 있다. 그 사이에 오게 둔다.
+    node.scrollIntoView({ block: 'end' })
+    window.scrollBy(0, 120)
+  })
+  const block = await page.locator('[data-testid="subtitle-block"]').boundingBox()
+  const touchPoint = { x: block.x + Math.min(20, block.width / 2), y: block.y + block.height / 2 }
+  const hit = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid="subtitle-block"]') !== null,
+    [touchPoint.x, touchPoint.y],
+  )
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touchPoint] })
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  check(
+    'AC-047 손가락으로 길게 누르면 지우기 메뉴가 뜬다',
+    await page.locator('[data-testid="subtitle-menu-delete"]').isVisible(),
+    hit ? '' : '누른 자리에 자막이 없음',
+  )
+  const menuBox = await page.locator('[data-testid="subtitle-menu-delete"]').boundingBox()
+  check(
+    'AC-047 메뉴 버튼이 손가락으로 누를 만한 크기이고 화면 안에 있다',
+    menuBox !== null &&
+      menuBox.height >= 44 &&
+      menuBox.x >= 0 &&
+      menuBox.x + menuBox.width <= VIEWPORT.width,
+    menuBox ? `${Math.round(menuBox.width)}×${Math.round(menuBox.height)}` : '없음',
+  )
+  await page.tap('[data-testid="subtitle-menu-delete"]')
+  check(
+    'AC-047 메뉴를 누르면 자막이 지워진다',
+    (await page.locator('[data-testid="subtitle-block"]').count()) === 0,
+  )
+
   // ---------- 가로로 넘치지 않는다 ----------
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
