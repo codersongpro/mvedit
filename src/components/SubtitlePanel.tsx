@@ -71,7 +71,7 @@ export function SubtitlePanel() {
       {rows.length > 0 && (
         <ul
           data-testid="subtitle-list"
-          className="flex flex-col gap-0.5 overflow-hidden rounded-m3-lg"
+          className="flex flex-col gap-0.5 overflow-hidden rounded-m3-lg max-h-[320px] overflow-y-auto md:max-h-[500px]"
         >
           {rows.map(({ subtitle, timelineStart, hidden }) => {
             // 입력칸 라벨 뒤 배경은 줄 배경과 같아야 테두리가 자연스럽게 끊긴다.
