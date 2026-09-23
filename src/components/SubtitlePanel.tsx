@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import { useProject } from '../lib/project/store'
-import { segmentAt, toSegments } from '../lib/project/playback'
+import { toSegments } from '../lib/project/playback'
 import { clipRange } from '../lib/project/subtitles'
 import { MAX_SUBTITLE_LENGTH, type Subtitle } from '../lib/project/types'
 import { formatClock } from '../lib/format'
-import { DeleteIcon, ExpandMoreIcon, TextFieldsIcon } from './icons'
+import { DeleteIcon, ExpandMoreIcon } from './icons'
 import { Chip, Row, Segmented, TextField, btn } from './m3'
 
 const FONT_SIZES = [
@@ -30,12 +30,10 @@ export function SubtitlePanel() {
   const timeline = useProject((state) => state.timeline)
   const subtitles = useProject((state) => state.subtitles)
   const style = useProject((state) => state.subtitleStyle)
-  const addSubtitle = useProject((state) => state.addSubtitle)
   const updateSubtitle = useProject((state) => state.updateSubtitle)
   const removeSubtitle = useProject((state) => state.removeSubtitle)
   const setSubtitleStyle = useProject((state) => state.setSubtitleStyle)
   const setPlayhead = useProject((state) => state.setPlayhead)
-  const playhead = useProject((state) => state.playhead)
   const selectedId = useProject((state) => state.selectedSubtitleId)
 
   const segments = useMemo(() => toSegments(timeline), [timeline])
@@ -59,24 +57,15 @@ export function SubtitlePanel() {
       .sort((a, b) => a.timelineStart - b.timelineStart)
   }, [segments, subtitles])
 
-  const canAdd = segmentAt(segments, playhead) !== null
-
   if (timeline.length === 0) return null
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          data-testid="add-subtitle"
-          disabled={!canAdd}
-          onClick={() => addSubtitle()}
-          className={`${btn.filled} h-11 pl-4`}
-        >
-          <TextFieldsIcon size={20} />
-          현재 위치에 자막 추가
-        </button>
-        <span className="mx-2 m3-label-large text-on-surface-variant">자막 {rows.length}개</span>
+        <span className="mx-1 m3-label-large text-on-surface">자막 {rows.length}개</span>
+        <span className="m3-body-small text-on-surface-variant">
+          미리보기 아래 ‘자막 추가’를 누르면 지금 보이는 장면에 자막이 들어갑니다.
+        </span>
       </div>
 
       {rows.length > 0 && (

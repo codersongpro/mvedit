@@ -124,6 +124,7 @@ export function TextField({
   className?: string
   inputClassName?: string
   suffix?: string
+  ref?: React.Ref<HTMLInputElement>
 } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label className={`relative block ${className}`}>

@@ -130,6 +130,17 @@ try {
     afterScroll ? `아래 끝 ${Math.round(afterScroll.y + afterScroll.height)}` : '없음',
   )
 
+  // 자막 추가는 위에 붙은 미리보기와 함께 다녀야 한다. 목록까지 내려가서
+  // 누르고 다시 올라와 확인하는 일이 없어야 한다.
+  const addSubtitle = await page.locator('[data-testid="add-subtitle"]').boundingBox()
+  check(
+    'FR-029 화면을 내려도 자막 추가 버튼이 보인다',
+    addSubtitle !== null &&
+      addSubtitle.y >= 0 &&
+      addSubtitle.y + addSubtitle.height <= VIEWPORT.height,
+    addSubtitle ? `위치 ${Math.round(addSubtitle.y)}` : '없음',
+  )
+
   const sizes = await page.$$eval('[data-testid="mobile-toolbar"] button', (nodes) =>
     nodes.map((node) => {
       const box = node.getBoundingClientRect()
@@ -232,6 +243,21 @@ try {
     'FR-029 되돌리기 버튼 한 번으로 돌아온다',
     (await page.locator('[data-testid="clip"]').count()) === 2,
     `${await page.locator('[data-testid="clip"]').count()}개`,
+  )
+
+  // ---------- 자막을 미리보기 아래에서 바로 쓴다 ----------
+  // 입력칸이 늦게 생겨 포커스를 놓치면, 띄어쓰기가 재생 단축키로 가서
+  // 영상이 재생되고 자막은 비어 버린다. 모바일에서만 드러났다.
+  await page.click('[data-testid="add-subtitle"]')
+  await page.keyboard.type('첫 자막 입니다')
+  check(
+    'FR-034 자막 추가 뒤 바로 치는 글자가 자막에 들어간다',
+    (await page.inputValue('[data-testid="preview-subtitle-text"]')) === '첫 자막 입니다',
+    await page.inputValue('[data-testid="preview-subtitle-text"]'),
+  )
+  check(
+    'FR-034 띄어쓰기를 쳐도 재생되지 않는다',
+    (await page.getAttribute('[data-testid="play-toggle"]', 'aria-label')) === '재생',
   )
 
   // ---------- 가로로 넘치지 않는다 ----------

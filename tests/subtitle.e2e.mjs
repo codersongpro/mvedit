@@ -92,7 +92,11 @@ try {
   const scale = () =>
     page.$eval('[data-testid="timeline"]', (node) => Number(node.dataset.pxPerSecond))
   async function seekTo(seconds) {
-    await page.locator('[data-testid="ruler"]').scrollIntoViewIfNeeded()
+    // 화면 위 끝에 걸쳐 있으면 '보인다'고 보고 스크롤하지 않는데, 그 자리는
+    // 위에 붙은 앱 바가 가린다. 가운데로 옮겨 놓고 누른다.
+    await page.locator('[data-testid="ruler"]').evaluate((node) =>
+      node.scrollIntoView({ block: 'center' }),
+    )
     const ruler = await page.locator('[data-testid="ruler"]').boundingBox()
     await page.mouse.click(ruler.x + seconds * (await scale()), ruler.y + ruler.height / 2)
     await page.waitForFunction(
@@ -115,6 +119,30 @@ try {
   await page.click('[data-testid="add-subtitle"]')
   check('AC-039 재생헤드 위치에 자막이 생김', (await rowCount()) === 1)
   check('AC-039 자막 시각이 재생헤드와 일치', (await rowTimes())[0] === '00:02', (await rowTimes())[0])
+
+  // 자막 추가는 미리보기 바로 아래에서 한다. 목록까지 내려가지 않고도
+  // 화면을 보면서 넣고 고칠 수 있어야 한다.
+  const addBox = await page.locator('[data-testid="add-subtitle"]').boundingBox()
+  const timelineBox = await page.locator('[data-testid="timeline"]').boundingBox()
+  check(
+    'AC-039 자막 추가 버튼이 미리보기 바로 아래(타임라인 위)에 있다',
+    addBox.y + addBox.height < timelineBox.y,
+    `버튼 아래 끝 ${Math.round(addBox.y + addBox.height)} / 타임라인 ${Math.round(timelineBox.y)}`,
+  )
+  check(
+    'AC-039 추가하면 미리보기 아래 입력칸에 바로 쓸 수 있다',
+    await page.$eval(
+      '[data-testid="preview-subtitle-text"]',
+      (node) => node === document.activeElement,
+    ),
+  )
+  await page.keyboard.type('미리보기에서')
+  check(
+    'AC-038 미리보기 아래에서 쓴 자막이 화면과 목록에 반영',
+    (await overlayText()) === '미리보기에서' &&
+      (await page.inputValue('[data-testid="subtitle-text"]')) === '미리보기에서',
+    String(await overlayText()),
+  )
 
   await page.fill('[data-testid="subtitle-text"]', '안녕하세요')
   check('AC-038 입력이 미리보기에 즉시 반영', (await overlayText()) === '안녕하세요', String(await overlayText()))

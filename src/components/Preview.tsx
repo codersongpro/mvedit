@@ -7,7 +7,9 @@ import { timelineDuration } from '../lib/project/types'
 import { computeOutputSize } from '../lib/media/outputSize'
 import { useIsMobile } from '../lib/useIsMobile'
 import { formatClock } from '../lib/format'
-import { PauseIcon, PlayArrowIcon } from './icons'
+import { PauseIcon, PlayArrowIcon, TextFieldsIcon } from './icons'
+import { TextField, btn } from './m3'
+import { MAX_SUBTITLE_LENGTH } from '../lib/project/types'
 
 /** 영상 시각이 이보다 어긋나면 맞춰 준다. 매 프레임 맞추면 재생이 끊긴다. */
 const SYNC_TOLERANCE = 0.25
@@ -32,6 +34,8 @@ export function Preview() {
   const setPlayhead = useProject((state) => state.setPlayhead)
   const setPlaying = useProject((state) => state.setPlaying)
   const togglePlay = useProject((state) => state.togglePlay)
+  const addSubtitle = useProject((state) => state.addSubtitle)
+  const updateSubtitle = useProject((state) => state.updateSubtitle)
 
   const subtitles = useProject((state) => state.subtitles)
   const subtitleStyle = useProject((state) => state.subtitleStyle)
@@ -49,6 +53,8 @@ export function Preview() {
   const videoRefs = useRef(new Map<string, HTMLVideoElement>())
   const imageRef = useRef<HTMLImageElement | null>(null)
   const backdropRef = useRef<HTMLCanvasElement | null>(null)
+  const subtitleInputRef = useRef<HTMLInputElement | null>(null)
+  const focusNewSubtitleRef = useRef(false)
   const playheadRef = useRef(playhead)
   const lastTickRef = useRef(0)
   playheadRef.current = playhead
@@ -155,6 +161,15 @@ export function Preview() {
     if (playing) void video.play().catch(() => setPlaying(false))
     else video.pause()
   }, [current, playing, pauseOthers, setPlaying])
+
+  // 방금 넣은 자막의 입력칸이 그려진 뒤에 바로 쓸 수 있게 한다. 버튼을 누른
+  // 그 자리에서 포커스를 옮기면 입력칸이 아직 없을 때가 있고(모바일), 그러면
+  // 치는 글자의 띄어쓰기가 재생 단축키로 가 버린다.
+  useEffect(() => {
+    if (!focusNewSubtitleRef.current || !currentSubtitle) return
+    focusNewSubtitleRef.current = false
+    subtitleInputRef.current?.focus()
+  }, [currentSubtitle])
 
   // 멈춘 채 재생헤드를 옮기면 그 장면을 보여 준다.
   //
@@ -347,7 +362,37 @@ export function Preview() {
           {formatClock(playhead)}{' '}
           <span className="m3-body-medium text-on-surface-variant">/ {formatClock(total)}</span>
         </span>
+        {/* 자막은 화면을 보면서 넣는다. 버튼이 자막 목록에 있으면 미리보기와
+            떨어져 있어 멈추고, 내려가서 누르고, 다시 올라와 확인해야 했다. */}
+        <button
+          type="button"
+          data-testid="add-subtitle"
+          disabled={!current}
+          onClick={() => {
+            focusNewSubtitleRef.current = true
+            addSubtitle()
+          }}
+          className={`${btn.tonal} ml-auto h-11 pr-5 pl-4`}
+        >
+          <TextFieldsIcon size={20} />
+          {mobile ? '자막 추가' : '현재 위치에 자막 추가'}
+        </button>
       </div>
+
+      {/* 지금 보이는 자막을 그 자리에서 고친다. 재생 중에는 자막이 계속 바뀌어
+          입력칸이 흔들리므로 멈췄을 때만 둔다. */}
+      {!playing && currentSubtitle && (
+        <TextField
+          ref={subtitleInputRef}
+          label="지금 보이는 자막"
+          labelBg={mobile ? 'bg-surface' : 'bg-surface-container'}
+          data-testid="preview-subtitle-text"
+          value={currentSubtitle.text}
+          maxLength={MAX_SUBTITLE_LENGTH}
+          placeholder="자막 내용을 입력하세요"
+          onChange={(event) => updateSubtitle(currentSubtitle.id, { text: event.target.value })}
+        />
+      )}
     </div>
   )
 }
