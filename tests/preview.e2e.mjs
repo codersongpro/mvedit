@@ -124,6 +124,38 @@ try {
     `${paused.toFixed(2)} → ${(await playhead()).toFixed(2)}`,
   )
 
+  // ---------- AC-046 멈춘 채 재생헤드를 옮기면 그 장면이 보인다 ----------
+  // 같은 클립 안에서 옮길 때가 문제였다. 클립이 바뀌지 않으면 영상 요소를
+  // 다시 맞추지 않아 미리보기가 예전 장면에 멈춰 있었다.
+  const visibleVideoTime = () =>
+    page.$eval('[data-testid="preview"] video:not(.hidden)', (node) => node.currentTime)
+  const seekScale = await page.$eval('[data-testid="timeline"]', (node) =>
+    Number(node.dataset.pxPerSecond),
+  )
+  await page.locator('[data-testid="ruler"]').scrollIntoViewIfNeeded()
+  const seekRuler = await page.locator('[data-testid="ruler"]').boundingBox()
+  for (const target of [1.5, 2.5, 0.5]) {
+    await page.mouse.click(seekRuler.x + target * seekScale, seekRuler.y + seekRuler.height / 2)
+    const head = await playhead()
+    // 탐색은 비동기라 영상 시각이 따라올 때까지 잠깐 기다린다.
+    await page
+      .waitForFunction(
+        (expected) => {
+          const video = document.querySelector('[data-testid="preview"] video:not(.hidden)')
+          return video && Math.abs(video.currentTime - expected) < 0.05
+        },
+        head,
+        { timeout: 3_000 },
+      )
+      .catch(() => {})
+    const shown = await visibleVideoTime()
+    check(
+      `AC-046 멈춘 채 ${target}초로 옮기면 미리보기도 그 장면`,
+      Math.abs(shown - head) < 0.05,
+      `재생헤드 ${head.toFixed(2)}초 / 영상 ${shown.toFixed(2)}초`,
+    )
+  }
+
   // ---------- AC-014 편집 결과대로 재생 ----------
   // 가·나·다 → 나 삭제 → 다를 맨 앞으로 → 순서는 다, 가
   await page.locator('[data-testid="clip"]').nth(1).click()

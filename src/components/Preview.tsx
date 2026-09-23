@@ -12,6 +12,9 @@ import { PauseIcon, PlayArrowIcon } from './icons'
 /** 영상 시각이 이보다 어긋나면 맞춰 준다. 매 프레임 맞추면 재생이 끊긴다. */
 const SYNC_TOLERANCE = 0.25
 
+/** 멈춘 채 옮길 때는 프레임 단위로 맞춘다. 30fps 의 반 프레임이다. */
+const FRAME_TOLERANCE = 1 / 60
+
 /** 구간 끝을 이만큼 남기고 다음으로 넘어간다. 마지막 프레임에서 멈칫하는 것을 막는다. */
 const SEGMENT_EPSILON = 0.03
 
@@ -153,6 +156,20 @@ export function Preview() {
     else video.pause()
   }, [current, playing, pauseOthers, setPlaying])
 
+  // 멈춘 채 재생헤드를 옮기면 그 장면을 보여 준다.
+  //
+  // 위 효과는 클립이 바뀔 때만 돈다. 같은 클립 안에서 옮기면 영상 요소가
+  // 예전 장면에 멈춰 있어, 자를 자리를 눈으로 찾을 수 없다. 재생 중에는
+  // 영상 시각이 재생헤드를 이끄므로 여기서 건드리지 않는다.
+  useEffect(() => {
+    if (playing || current?.item.type !== 'video') return
+    const video = videoRefs.current.get(current.item.sourceId ?? '')
+    if (!video) return
+    const expected = sourceTimeAt(current, playhead)
+    // 반 프레임보다 작은 차이는 같은 장면이다. 매번 탐색하면 디코딩만 늘어난다.
+    if (Math.abs(video.currentTime - expected) > FRAME_TOLERANCE) video.currentTime = expected
+  }, [current, playhead, playing])
+
   // 다음 클립을 미리 시작 지점에 맞춰 둔다.
   //
   // 넘어가는 순간에 비로소 탐색을 시작하면 그동안 화면이 멈춰 뚝 끊긴다.
@@ -284,6 +301,8 @@ export function Preview() {
               src={objectUrls.get(source.id)}
               preload="auto"
               playsInline
+              // 탐색은 비동기라 재생헤드를 옮긴 직후에 그리면 이전 장면이 남는다.
+              onSeeked={blurred ? paintBackdrop : undefined}
               // 내보내기에서 고른 맞추는 방법을 그대로 쓴다.
               className={`absolute inset-0 h-full w-full ${fitClass} ${
                 current?.item.sourceId === source.id && kind === 'video' ? '' : 'hidden'
