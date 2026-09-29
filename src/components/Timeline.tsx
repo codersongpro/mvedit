@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { findSource, useProject } from '../lib/project/store'
 import { MIN_CLIP_SECONDS, type TrimEdge } from '../lib/project/edit'
-import { toSegments } from '../lib/project/playback'
+import { fadesOf, toSegments } from '../lib/project/playback'
 import { clipRange } from '../lib/project/subtitles'
 import {
   itemDuration,
@@ -13,7 +13,7 @@ import {
   type TimelineItem,
 } from '../lib/project/types'
 import { formatClock } from '../lib/format'
-import { AddCircleIcon, DeleteIcon, DoNotDisturbOnIcon } from './icons'
+import { AddCircleIcon, DeleteIcon, DoNotDisturbOnIcon, MusicNoteIcon } from './icons'
 import { btn } from './m3'
 
 // 1초를 1픽셀로 보면 한 시간짜리 영상도 한눈에 들어오고,
@@ -449,6 +449,7 @@ function Clip({
 }) {
   const trim = useProject((state) => state.trim)
   const seconds = itemDuration(item)
+  const fades = fadesOf(item)
 
   // 끄는 동안에는 화면만 미리 바꾸고, 손을 뗄 때 한 번만 기록한다.
   // 움직일 때마다 기록하면 되돌리기 한 번에 1픽셀씩만 돌아간다.
@@ -542,8 +543,33 @@ function Clip({
               backgroundPosition: 'left center',
             }}
           />
+        ) : item.type === 'audio' ? (
+          // 음원은 보여 줄 장면이 없다. 무슨 클립인지 한눈에 알아보게 음표를 둔다.
+          <div
+            data-testid="clip-audio"
+            className="flex h-full w-full items-center justify-center bg-secondary-container text-on-secondary-container"
+          >
+            <MusicNoteIcon size={24} />
+          </div>
         ) : (
           <div className="h-full w-full" style={{ backgroundColor: item.color }} />
+        )}
+        {/* 페이드 구간을 어둡게 그려 어디서 얼마나 잦아드는지 보이게 한다. */}
+        {fades.fadeIn > 0 && (
+          <span
+            data-testid="clip-fade-in"
+            aria-hidden
+            className="pointer-events-none absolute top-0 bottom-0 left-0 bg-gradient-to-r from-black/80 to-transparent"
+            style={{ width: `${Math.min(fades.fadeIn, previewSeconds) * pxPerSecond}px` }}
+          />
+        )}
+        {fades.fadeOut > 0 && (
+          <span
+            data-testid="clip-fade-out"
+            aria-hidden
+            className="pointer-events-none absolute top-0 right-0 bottom-0 bg-gradient-to-l from-black/80 to-transparent"
+            style={{ width: `${Math.min(fades.fadeOut, previewSeconds) * pxPerSecond}px` }}
+          />
         )}
         <span className="absolute top-1 left-1 rounded-md bg-black/60 px-1.5 m3-label-small text-white">
           {index + 1}
@@ -551,6 +577,11 @@ function Clip({
         {item.type === 'image' && (
           <span className="absolute top-1 right-1 rounded-md bg-tertiary-container px-1.5 m3-label-small text-on-tertiary-container">
             사진
+          </span>
+        )}
+        {item.type === 'audio' && (
+          <span className="absolute top-1 right-1 rounded-md bg-tertiary-container px-1.5 m3-label-small text-on-tertiary-container">
+            음원
           </span>
         )}
       </div>

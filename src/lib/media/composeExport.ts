@@ -7,15 +7,18 @@ import {
   BufferTarget,
   CanvasSource,
   Input,
+  Mp3OutputFormat,
   Mp4OutputFormat,
   Output,
   VideoSampleSink,
   WebMOutputFormat,
+  canEncodeAudio,
   type InputAudioTrack,
   type InputVideoTrack,
 } from 'mediabunny'
-import { toSegments, type Segment } from '../project/playback'
+import { fadeFactor, fadesOf, toSegments, type Segment } from '../project/playback'
 import { subtitleAt } from '../project/subtitles'
+import { isAudioOnly, usesSourceTime } from '../project/types'
 import type { ExportSetting, Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
 import { computeOutputSize, resolveVideoBitrate, AUDIO_BITRATE } from './outputSize'
 import { drawSubtitle } from './drawSubtitle'
@@ -54,7 +57,7 @@ export interface ComposeInput {
   /** 원본 id → 파일 */
   files: Map<string, File>
   /** 원본 id → 종류 */
-  kinds: Map<string, 'video' | 'image'>
+  kinds: Map<string, 'video' | 'image' | 'audio'>
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
   setting: ExportSetting
@@ -94,6 +97,8 @@ export async function composeTimeline(
 ): Promise<ComposeResult> {
   const segments = toSegments(input.timeline)
   if (segments.length === 0) throw new ExportError('no-video-track', '타임라인이 비어 있습니다.')
+  // 음원만 있는 프로젝트는 화면이 없으므로 MP3 로 낸다.
+  if (isAudioOnly(input.timeline)) return composeAudioOnly(input, segments, { onProgress, signal })
 
   const totalDuration = segments.at(-1)?.end ?? 0
   const inputs: Input[] = []
@@ -213,7 +218,7 @@ async function resolveAudioFormat(
   openInput: (sourceId: string) => Input,
 ): Promise<AudioFormat> {
   for (const segment of segments) {
-    if (segment.item.type !== 'video' || !segment.item.sourceId) continue
+    if (!usesSourceTime(segment.item) || !segment.item.sourceId) continue
     const track = await openInput(segment.item.sourceId).getPrimaryAudioTrack()
     if (!track) continue
     return {
@@ -224,18 +229,22 @@ async function resolveAudioFormat(
   return { sampleRate: FALLBACK_SAMPLE_RATE, numberOfChannels: FALLBACK_CHANNELS }
 }
 
-interface RenderContext {
+/** 소리만 옮길 때 필요한 것. 음원 전용 내보내기는 화면 쪽 값 없이 이것만 채운다. */
+interface AudioRenderContext {
   segment: Segment
   input: ComposeInput
   openInput: (sourceId: string) => Input
+  audioSource: AudioSampleSource
+  audioFormat: AudioFormat
+  throwIfAborted: () => void
+}
+
+interface RenderContext extends AudioRenderContext {
   canvas: OffscreenCanvas
   context: OffscreenCanvasRenderingContext2D
   /** '흐린 배경 채우기'일 때만 있다 */
   blur: BlurLayer | null
   videoSource: CanvasSource
-  audioSource: AudioSampleSource
-  audioFormat: AudioFormat
-  throwIfAborted: () => void
   onProgress: () => void
 }
 
@@ -248,7 +257,7 @@ async function renderSegment(ctx: RenderContext): Promise<void> {
 }
 
 async function renderVideoSegment(ctx: RenderContext): Promise<void> {
-  const { segment, audioSource } = ctx
+  const { segment } = ctx
   const item = segment.item
   if (!item.sourceId) return
 
@@ -257,8 +266,16 @@ async function renderVideoSegment(ctx: RenderContext): Promise<void> {
   if (!videoTrack) throw new ExportError('no-video-track')
 
   await drawVideoFrames({ ctx, videoTrack, segment })
+  await renderSegmentAudio(ctx)
+}
 
-  const audioTrack = await source.getPrimaryAudioTrack()
+/** 구간의 소리를 옮긴다. 소리가 없거나 음소거면 같은 길이의 무음으로 채운다. */
+async function renderSegmentAudio(ctx: AudioRenderContext): Promise<void> {
+  const { segment, audioSource } = ctx
+  const item = segment.item
+  const audioTrack = item.sourceId
+    ? await ctx.openInput(item.sourceId).getPrimaryAudioTrack()
+    : null
   if (audioTrack && !item.muted) {
     await copyAudio({ ctx, audioTrack, segment })
   } else {
@@ -311,7 +328,7 @@ async function drawVideoFrames({
     sample.drawWithFit(ctx.context, { fit: foregroundFit(ctx.input.setting.fitMode) })
     sample.close()
 
-    paintSubtitle(ctx, segment, item.inPoint + offset)
+    paintOverlays(ctx, segment, item.inPoint + offset, offset)
     await ctx.videoSource.add(timestamp, duration)
     emitted += 1
     ctx.onProgress()
@@ -321,7 +338,7 @@ async function drawVideoFrames({
   if (emitted === 0) {
     ctx.context.fillStyle = '#000000'
     ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-    paintSubtitle(ctx, segment, item.inPoint)
+    paintOverlays(ctx, segment, item.inPoint, 0)
     await ctx.videoSource.add(segment.start, segmentLength)
   }
 }
@@ -366,7 +383,7 @@ async function renderStillSegment(ctx: RenderContext): Promise<void> {
         foregroundFit(ctx.input.setting.fitMode),
       )
     }
-    paintSubtitle(ctx, segment, offset)
+    paintOverlays(ctx, segment, offset, offset)
 
     await ctx.videoSource.add(segment.start + offset, frameDuration)
     ctx.onProgress()
@@ -374,6 +391,11 @@ async function renderStillSegment(ctx: RenderContext): Promise<void> {
 
   bitmap?.close()
 
+  // 영상과 섞인 음원 구간은 검은 화면 위에 소리만 흐른다.
+  if (item.type === 'audio') {
+    await renderSegmentAudio(ctx)
+    return
+  }
   // 사진과 빈 화면은 소리가 없다. 길이만큼 무음을 넣어 뒤 구간을 밀지 않는다.
   await writeSilence(ctx.audioSource, ctx.audioFormat, segment.start, length)
 }
@@ -454,17 +476,34 @@ function drawWithFit(
   )
 }
 
-/** 그 시점에 보여야 할 자막을 프레임에 새긴다. */
-function paintSubtitle(ctx: RenderContext, segment: Segment, sourceTime: number): void {
+/**
+ * 그 시점의 자막과 페이드를 프레임에 새긴다.
+ *
+ * 페이드는 자막까지 덮도록 맨 마지막에 검정을 얹는다. 화면만 어두워지고
+ * 자막이 또렷이 남으면 페이드가 어색해 보인다.
+ */
+function paintOverlays(
+  ctx: RenderContext,
+  segment: Segment,
+  sourceTime: number,
+  clipOffset: number,
+): void {
   const subtitle = subtitleAt(ctx.input.subtitles, segment.item, sourceTime)
-  if (!subtitle) return
-  drawSubtitle(
-    ctx.context,
-    subtitle.text,
-    ctx.input.subtitleStyle,
-    ctx.canvas.width,
-    ctx.canvas.height,
-  )
+  if (subtitle) {
+    drawSubtitle(
+      ctx.context,
+      subtitle.text,
+      ctx.input.subtitleStyle,
+      ctx.canvas.width,
+      ctx.canvas.height,
+    )
+  }
+
+  const factor = fadeFactor(segment.item, clipOffset)
+  if (factor < 1) {
+    ctx.context.fillStyle = `rgba(0, 0, 0, ${1 - factor})`
+    ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  }
 }
 
 async function copyAudio({
@@ -472,7 +511,7 @@ async function copyAudio({
   audioTrack,
   segment,
 }: {
-  ctx: RenderContext
+  ctx: AudioRenderContext
   audioTrack: InputAudioTrack
   segment: Segment
 }): Promise<void> {
@@ -489,7 +528,7 @@ async function copyAudio({
     }
 
     const offset = Math.max(0, sample.timestamp - item.inPoint)
-    const normalized = normalizeAudio(sample, ctx.audioFormat, item.volume)
+    const normalized = normalizeAudio(sample, ctx.audioFormat, item, offset)
     sample.close()
     normalized.setTimestamp(segment.start + offset)
     await ctx.audioSource.add(normalized)
@@ -506,13 +545,21 @@ async function copyAudio({
  * 샘플을 출력 형식으로 맞추고 볼륨을 적용한다.
  *
  * 채널 수와 샘플레이트를 한 가지로 통일해야 소스가 샘플을 받아 준다.
- * 볼륨은 PCM 을 직접 곱하므로, HTMLMediaElement 가 못 내는 100% 초과도
+ * 볼륨과 페이드는 PCM 을 직접 곱하므로, HTMLMediaElement 가 못 내는 100% 초과도
  * 결과물에서는 실제로 커진다. 넘치는 값은 잘라 잡음을 막는다.
  *
  * 샘플레이트가 다를 때는 선형 보간으로 맞춘다. 대부분의 카메라·휴대폰이
  * 44.1kHz 또는 48kHz 를 쓰므로 변환 폭이 좁고, 이 정도면 귀로 구분되지 않는다.
  */
-function normalizeAudio(sample: AudioSample, format: AudioFormat, gain: number): AudioSample {
+function normalizeAudio(
+  sample: AudioSample,
+  format: AudioFormat,
+  item: TimelineItem,
+  /** 이 샘플이 시작하는 곳의 클립 안 시각(초). 페이드 곡선의 기준이다. */
+  clipOffset: number,
+): AudioSample {
+  const fades = fadesOf(item)
+  const fading = fades.fadeIn > 0 || fades.fadeOut > 0
   const sourceChannels = sample.numberOfChannels
   const sourceFrames = sample.numberOfFrames
   const size = sample.allocationSize({ planeIndex: 0, format: 'f32' })
@@ -528,6 +575,10 @@ function normalizeAudio(sample: AudioSample, format: AudioFormat, gain: number):
     const lower = Math.min(sourceFrames - 1, Math.floor(position))
     const upper = Math.min(sourceFrames - 1, lower + 1)
     const fraction = position - lower
+    // 샘플 하나 안에서도 프레임마다 배율을 구해야 페이드가 계단 없이 이어진다.
+    const gain = fading
+      ? item.volume * fadeFactor(item, clipOffset + frame / format.sampleRate)
+      : item.volume
 
     for (let channel = 0; channel < format.numberOfChannels; channel += 1) {
       // 모노를 스테레오로 늘릴 때는 같은 소리를 양쪽에 넣는다.
@@ -571,5 +622,82 @@ async function writeSilence(
     await audioSource.add(sample)
     sample.close()
     written += frames / format.sampleRate
+  }
+}
+
+/** MP3 가 받는 샘플레이트. 그 밖의 값이면 44.1kHz 로 바꿔 쓴다. */
+const MP3_SAMPLE_RATES = [48000, 44100, 32000, 24000, 22050, 16000]
+const MP3_BITRATE = 192_000
+
+/**
+ * 음원만 이어 붙여 MP3 로 내보낸다.
+ *
+ * 영상 쪽과 같은 소리 경로(구간 순회·정규화·볼륨·페이드)를 쓴다. 화면 캔버스와
+ * 영상 트랙만 빠진다. 브라우저에 MP3 인코더가 없을 수 있어(WebCodecs 는 MP3 를
+ * 인코딩하지 않는다) LAME 인코더를 필요할 때만 받아 등록한다.
+ */
+async function composeAudioOnly(
+  input: ComposeInput,
+  segments: Segment[],
+  { onProgress, signal }: ComposeOptions,
+): Promise<ComposeResult> {
+  const totalDuration = segments.at(-1)?.end ?? 0
+  const inputs: Input[] = []
+
+  try {
+    if (!(await canEncodeAudio('mp3'))) {
+      const { registerMp3Encoder } = await import('@mediabunny/mp3-encoder')
+      registerMp3Encoder()
+    }
+
+    const opened = new Map<string, Input>()
+    const openInput = (sourceId: string) => {
+      const existing = opened.get(sourceId)
+      if (existing) return existing
+      const file = input.files.get(sourceId)
+      if (!file) throw new ExportError('unreadable', '원본 파일을 찾을 수 없습니다.')
+      const created = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+      opened.set(sourceId, created)
+      inputs.push(created)
+      return created
+    }
+
+    const detected = await resolveAudioFormat(segments, openInput)
+    const audioFormat: AudioFormat = {
+      sampleRate: MP3_SAMPLE_RATES.includes(detected.sampleRate) ? detected.sampleRate : 44100,
+      numberOfChannels: Math.min(2, detected.numberOfChannels),
+    }
+
+    const output = new Output({ format: new Mp3OutputFormat(), target: new BufferTarget() })
+    const audioSource = new AudioSampleSource({ codec: 'mp3', bitrate: MP3_BITRATE })
+    output.addAudioTrack(audioSource)
+    await output.start()
+
+    for (const segment of segments) {
+      if (signal?.aborted) throw new ExportError('canceled')
+      await renderSegmentAudio({
+        segment,
+        input,
+        openInput,
+        audioSource,
+        audioFormat,
+        throwIfAborted: () => {
+          if (signal?.aborted) throw new ExportError('canceled')
+        },
+      })
+      onProgress?.(segment.end / totalDuration, segment.end)
+    }
+
+    audioSource.close()
+    await output.finalize()
+
+    const buffer = output.target.buffer
+    if (!buffer) throw new ExportError('unknown', '출력 데이터가 비어 있습니다.')
+
+    return { buffer, mimeType: 'audio/mpeg', fileExtension: 'mp3', srt: null, videoBitrate: 0 }
+  } catch (error) {
+    throw toExportError(error)
+  } finally {
+    for (const opened of inputs) opened.dispose()
   }
 }

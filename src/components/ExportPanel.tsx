@@ -8,6 +8,7 @@ import {
   type ExportWorkerResponse,
 } from '../lib/media/exportTypes'
 import { formatBytes, formatClock } from '../lib/format'
+import { isAudioOnly } from '../lib/project/types'
 import { estimateRemainingMs } from '../lib/project/limits'
 import { lowerResolution } from '../lib/media/outputSize'
 import { ExportSettings } from './ExportSettings'
@@ -48,6 +49,8 @@ export function ExportPanel() {
   const [phase, setPhase] = useState<Phase>({ status: 'idle' })
 
   // 결과 파일 이름은 첫 원본에서 따온다. 프로젝트 이름은 아직 없다.
+  // 음원만 있으면 화면 설정도 영상 코덱도 필요 없다. MP3 인코더는 내보낼 때 받아 온다.
+  const audioOnly = isAudioOnly(timeline)
   const exportBaseName =
     sources.find((source) => source.kind === 'video')?.fileName ?? sources[0]?.fileName ?? '영상'
 
@@ -80,7 +83,7 @@ export function ExportPanel() {
   }, [phase.status])
 
   const startExport = useCallback(() => {
-    if (timeline.length === 0 || !profile) return
+    if (timeline.length === 0 || (!profile && !audioOnly)) return
 
     for (const url of objectUrlRef.current) URL.revokeObjectURL(url)
     objectUrlRef.current = []
@@ -152,15 +155,18 @@ export function ExportPanel() {
       job: {
         timeline,
         files: sources.map((source) => [source.id, source.file] as [string, File]),
-        kinds: sources.map((source) => [source.id, source.kind] as [string, 'video' | 'image']),
+        kinds: sources.map(
+          (source) => [source.id, source.kind] as [string, 'video' | 'image' | 'audio'],
+        ),
         subtitles,
         subtitleStyle,
         setting,
-        profile,
+        // 음원 전용 내보내기는 이 값을 읽지 않는다. 자리만 채운다.
+        profile: profile ?? MP4_PROFILE,
       },
     }
     worker.postMessage(request)
-  }, [timeline, sources, subtitles, subtitleStyle, setting, profile, exportBaseName])
+  }, [timeline, sources, subtitles, subtitleStyle, setting, profile, exportBaseName, audioOnly])
 
   const cancelExport = useCallback(() => {
     const request: ExportWorkerRequest = { type: 'cancel' }
@@ -171,9 +177,15 @@ export function ExportPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <ExportSettings />
+      {!audioOnly && <ExportSettings />}
 
-      {profile && profile.id !== MP4_PROFILE.id && (
+      {audioOnly && (
+        <p data-testid="audio-only-note" className="m3-body-small text-on-surface-variant">
+          음원만 있어 MP3(192kbps)로 내보냅니다. 클립 사이 페이드와 소리 크기가 그대로 들어갑니다.
+        </p>
+      )}
+
+      {!audioOnly && profile && profile.id !== MP4_PROFILE.id && (
         <p className={notice.warn}>
           이 브라우저는 MP4(H.264) 인코딩을 지원하지 않아 시험용으로 {profile.label} 형식으로
           내보냅니다.
@@ -184,7 +196,7 @@ export function ExportPanel() {
         열면 되는지, 지금 한 편집을 어떻게 지키는지까지 같이 알린다 (FR-028).
         "지원하지 않습니다" 한 줄만 두면 사용자는 편집한 것을 그대로 잃는다.
       */}
-      {profile === null && (
+      {profile === null && !audioOnly && (
         <div
           data-testid="export-unsupported"
           className="flex flex-col gap-2 rounded-m3-md bg-error-container p-4 m3-body-medium text-on-error-container"
@@ -205,7 +217,7 @@ export function ExportPanel() {
         </div>
       )}
 
-      {phase.status !== 'exporting' && profile && (
+      {phase.status !== 'exporting' && (profile || audioOnly) && (
         <button
           type="button"
           data-testid="export-button"
@@ -213,7 +225,7 @@ export function ExportPanel() {
           className={`${btn.filled} h-14 self-start rounded-m3-lg pr-6 pl-4 text-base`}
         >
           <UploadIcon size={24} />
-          영상 내보내기
+          {audioOnly ? 'MP3 내보내기' : '영상 내보내기'}
         </button>
       )}
 
@@ -286,7 +298,7 @@ export function ExportPanel() {
               className={`${btn.filled} pl-4`}
             >
               <DownloadIcon size={18} />
-              영상 저장
+              {audioOnly ? 'MP3 저장' : '영상 저장'}
             </a>
             {phase.srtUrl && (
               <a

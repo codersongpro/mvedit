@@ -155,3 +155,65 @@ export async function inspectFile({ bundleSource, bytes, mimeType }) {
   URL.revokeObjectURL(url)
   return result
 }
+
+/** 사진처럼 평평한 화면의 평균 밝기(0~255)를 시각별로 잰다. 페이드로 어두워졌는지 보려는 것. */
+export async function sampleBrightness({ bundleSource, bytes, mimeType, times }) {
+  const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
+  const mb = await import(/* @vite-ignore */ url)
+  const blob = new Blob([new Uint8Array(bytes)], { type: mimeType })
+  const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS })
+  const sink = new mb.VideoSampleSink(await input.getPrimaryVideoTrack())
+
+  const result = []
+  for (const time of times) {
+    const sample = await sink.getSample(time)
+    const canvas = document.createElement('canvas')
+    canvas.width = sample.displayWidth
+    canvas.height = sample.displayHeight
+    const ctx = canvas.getContext('2d')
+    sample.draw(ctx, 0, 0)
+    sample.close()
+    // 가운데 한 줄만 본다. 흐린 배경 채우기여도 사진 가운데는 사진 색이다.
+    const row = ctx.getImageData(0, Math.floor(canvas.height / 2), canvas.width, 1).data
+    let sum = 0
+    for (let i = 0; i < row.length; i += 4) sum += (row[i] + row[i + 1] + row[i + 2]) / 3
+    result.push(sum / (row.length / 4))
+  }
+  input.dispose()
+  URL.revokeObjectURL(url)
+  return result
+}
+
+/** 음원 파일(영상 트랙 없음)을 다시 읽어 코덱·길이·구간별 소리 크기를 잰다. */
+export async function inspectAudioFile({ bundleSource, bytes, mimeType }) {
+  const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
+  const mb = await import(/* @vite-ignore */ url)
+  const blob = new Blob([new Uint8Array(bytes)], { type: mimeType })
+  const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS })
+
+  const track = await input.getPrimaryAudioTrack()
+  const hasVideo = (await input.getPrimaryVideoTrack()) !== null
+  const buckets = []
+  const sink = new mb.AudioSampleSink(track)
+  for await (const sample of sink.samples()) {
+    const size = sample.allocationSize({ planeIndex: 0, format: 'f32' })
+    const pcm = new Float32Array(size / 4)
+    sample.copyTo(pcm, { planeIndex: 0, format: 'f32' })
+    let peak = 0
+    for (let i = 0; i < pcm.length; i += 1) peak = Math.max(peak, Math.abs(pcm[i]))
+    buckets.push({ t: sample.timestamp, peak })
+    sample.close()
+  }
+
+  const result = {
+    codec: track.codec,
+    hasVideo,
+    duration: await input.computeDuration(),
+    sampleRate: await track.getSampleRate(),
+    channels: await track.getNumberOfChannels(),
+    audioEnergy: buckets,
+  }
+  input.dispose()
+  URL.revokeObjectURL(url)
+  return result
+}

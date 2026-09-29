@@ -1,13 +1,14 @@
 import {
   MAX_SUBTITLE_LENGTH,
   MIN_SUBTITLE_SECONDS,
+  usesSourceTime,
   type Subtitle,
   type TimelineItem,
 } from './types'
 
 /** 클립 안에서 자막이 놓일 수 있는 시간 범위. */
 export function clipRange(item: TimelineItem): { start: number; end: number } {
-  return item.type === 'video'
+  return usesSourceTime(item)
     ? { start: item.inPoint, end: item.outPoint }
     : { start: 0, end: item.duration }
 }
