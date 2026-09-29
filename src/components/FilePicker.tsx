@@ -24,7 +24,7 @@ export function FilePicker({
     <input
       ref={inputRef}
       type="file"
-      accept="video/*,image/*,.cutcap"
+      accept="video/*,image/*,audio/*,.mp3,.m4a,.wav,.cutcap"
       multiple
       className="sr-only"
       data-testid="file-input"
@@ -48,7 +48,7 @@ export function FilePicker({
           className={`${btn.tonal} h-11 pl-4`}
         >
           <AddIcon size={18} />
-          영상·사진 추가
+          영상·사진·음원 추가
         </button>
       </div>
     )
@@ -83,11 +83,11 @@ export function FilePicker({
         className={`${btn.filled} h-14 rounded-m3-lg pr-6 pl-4 text-base`}
       >
         <AddIcon size={24} />
-        영상·사진 추가
+        영상·사진·음원 추가
       </button>
       <p className="max-w-md m3-body-small text-on-surface-variant">
-        여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다. 프로젝트 파일(.cutcap)도 여기로 열 수
-        있습니다.
+        여러 개를 한 번에 고르거나 끌어다 놓을 수 있습니다. MP3 같은 음원만 올려 자르고 이어 붙인 뒤
+        MP3 로 저장할 수도 있습니다. 프로젝트 파일(.cutcap)도 여기로 열 수 있습니다.
       </p>
     </div>
   )

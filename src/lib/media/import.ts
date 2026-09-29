@@ -53,7 +53,7 @@ export async function importFiles(files: File[]): Promise<ImportOutcome> {
         continue
       }
 
-      const source = file.type.startsWith('image/') ? await readImage(file) : await readVideo(file)
+      const source = await readSource(file)
 
       if (!source) {
         outcome.rejected.push({
@@ -74,6 +74,47 @@ export async function importFiles(files: File[]): Promise<ImportOutcome> {
   }
 
   return outcome
+}
+
+const AUDIO_NAME = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i
+
+/**
+ * 종류를 가려 읽는다. 음원은 MIME 이 비어 오는 경우가 있어 확장자도 본다.
+ * 영상으로 읽히지 않는 파일(.m4a 등 영상 트랙이 없는 것)은 음원으로 한 번 더 시도한다.
+ */
+async function readSource(file: File): Promise<MediaSource | null> {
+  if (file.type.startsWith('image/')) return readImage(file)
+  if (file.type.startsWith('audio/') || AUDIO_NAME.test(file.name)) return readAudio(file)
+  return (await readVideo(file)) ?? (await readAudio(file))
+}
+
+async function readAudio(file: File): Promise<MediaSource | null> {
+  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+  try {
+    if (!(await input.canRead())) return null
+
+    const audioTrack = await input.getPrimaryAudioTrack()
+    if (!audioTrack) return null
+
+    return {
+      id: crypto.randomUUID(),
+      kind: 'audio',
+      file,
+      fileName: file.name,
+      fileSize: file.size,
+      lastModified: file.lastModified,
+      displayWidth: 0,
+      displayHeight: 0,
+      durationSeconds: await input.computeDuration(),
+      rotation: 0,
+      videoCodec: null,
+      audioCodec: audioTrack.codec,
+      hasAudio: true,
+      thumbnailUrl: null,
+    }
+  } finally {
+    input.dispose()
+  }
 }
 
 async function readVideo(file: File): Promise<MediaSource | null> {
@@ -170,14 +211,15 @@ async function readImage(file: File): Promise<MediaSource | null> {
 }
 
 function createItem(source: MediaSource): TimelineItem {
-  const isVideo = source.kind === 'video'
+  // 영상과 음원은 원본 구간(inPoint~outPoint)으로, 사진은 표시 시간으로 길이를 잡는다.
+  const timed = source.kind !== 'image'
   return {
     id: crypto.randomUUID(),
-    type: isVideo ? 'video' : 'image',
+    type: source.kind,
     sourceId: source.id,
     inPoint: 0,
-    outPoint: isVideo ? (source.durationSeconds ?? 0) : 0,
-    duration: isVideo ? 0 : DEFAULT_IMAGE_DURATION,
+    outPoint: timed ? (source.durationSeconds ?? 0) : 0,
+    duration: timed ? 0 : DEFAULT_IMAGE_DURATION,
     volume: 1,
     muted: false,
     color: '#000000',

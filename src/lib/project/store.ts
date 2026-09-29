@@ -27,6 +27,8 @@ import {
   setBlankColor,
   setItemAudio,
   setItemDuration,
+  setItemFade,
+  setSeamFades,
   splitAt,
   trimItem,
   type TrimEdge,
@@ -81,6 +83,9 @@ interface ProjectState {
   insertBlank: (duration?: number, color?: string) => void
   setDuration: (id: string, seconds: number) => void
   setAudio: (id: string, patch: { volume?: number; muted?: boolean }) => void
+  setFade: (id: string, patch: { fadeIn?: number; fadeOut?: number }) => void
+  /** 모든 컷 사이에 같은 길이의 페이드를 건다. 0 이면 뺀다. */
+  setSeamFades: (seconds: number) => void
   setColor: (id: string, color: string) => void
   removeSelected: () => void
   moveSelected: (delta: number) => void
@@ -294,6 +299,17 @@ export const useProject = create<ProjectState>((set, get) => {
     setAudio: (id, patch) => {
       const next = setItemAudio(get().timeline, id, patch)
       if (next) commit(next)
+    },
+
+    setFade: (id, patch) => {
+      const next = setItemFade(get().timeline, id, patch)
+      if (next) commit(next)
+    },
+
+    setSeamFades: (seconds) => {
+      const { timeline } = get()
+      if (timeline.length < 2) return
+      commit(setSeamFades(timeline, seconds))
     },
 
     setColor: (id, color) => {

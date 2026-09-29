@@ -5,7 +5,7 @@
  * 보관하기 위해서다. 타임라인 항목은 원본을 `sourceId`로 참조한다.
  */
 
-export type SourceKind = 'video' | 'image'
+export type SourceKind = 'video' | 'image' | 'audio'
 
 export interface MediaSource {
   id: string
@@ -28,7 +28,7 @@ export interface MediaSource {
   thumbnailUrl: string | null
 }
 
-export type TimelineItemType = 'video' | 'image' | 'blank'
+export type TimelineItemType = 'video' | 'image' | 'blank' | 'audio'
 
 export interface TimelineItem {
   id: string
@@ -44,7 +44,27 @@ export interface TimelineItem {
   muted: boolean
   /** blank 전용 배경색 */
   color: string
+  /**
+   * 클립 앞뒤의 페이드(초). 화면은 검정으로, 소리는 무음으로 잦아든다.
+   * 예전 프로젝트에는 없으므로 읽을 때는 `fadesOf` 를 거친다.
+   */
+  fadeIn?: number
+  fadeOut?: number
 }
+
+/** 원본 시간축을 쓰는 클립인가. 영상과 음원은 inPoint~outPoint 로 구간을 잡는다. */
+export function usesSourceTime(item: Pick<TimelineItem, 'type'>): boolean {
+  return item.type === 'video' || item.type === 'audio'
+}
+
+/** 음원 클립만 있는 프로젝트. 화면이 없으니 영상이 아니라 MP3 로 내보낸다. */
+export function isAudioOnly(items: Pick<TimelineItem, 'type'>[]): boolean {
+  return items.length > 0 && items.every((item) => item.type === 'audio')
+}
+
+/** 페이드 한 쪽의 상한. 이보다 길면 컷 하나가 통째로 잠겨 버린다. */
+export const MAX_FADE_SECONDS = 3
+export const DEFAULT_FADE_SECONDS = 0.5
 
 /** PRD 8절 기본값 */
 export const DEFAULT_IMAGE_DURATION = 3
@@ -59,7 +79,7 @@ export interface RejectedFile {
 
 /** 타임라인 항목이 화면에서 차지하는 시간 길이 */
 export function itemDuration(item: TimelineItem): number {
-  return item.type === 'video' ? item.outPoint - item.inPoint : item.duration
+  return usesSourceTime(item) ? item.outPoint - item.inPoint : item.duration
 }
 
 export function timelineDuration(items: TimelineItem[]): number {

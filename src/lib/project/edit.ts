@@ -1,10 +1,11 @@
 import {
   DEFAULT_BLANK_COLOR,
   DEFAULT_BLANK_DURATION,
+  MAX_FADE_SECONDS,
   type MediaSource,
   type TimelineItem,
 } from './types'
-import { itemDuration, timelineDuration } from './types'
+import { itemDuration, timelineDuration, usesSourceTime } from './types'
 
 /** 클립이 이보다 짧아지면 사실상 보이지 않으므로 더 줄이지 않는다. */
 export const MIN_CLIP_SECONDS = 0.1
@@ -67,15 +68,19 @@ export function splitAt(items: TimelineItem[], playhead: number): SplitResult | 
   const { item } = located
   const left: TimelineItem = { ...item, id: crypto.randomUUID() }
   const right: TimelineItem = { ...item, id: crypto.randomUUID() }
-  const cut = item.type === 'video' ? item.inPoint + offset : offset
+  const cut = usesSourceTime(item) ? item.inPoint + offset : offset
 
-  if (item.type === 'video') {
+  if (usesSourceTime(item)) {
     left.outPoint = cut
     right.inPoint = cut
   } else {
     left.duration = offset
     right.duration = total - offset
   }
+  // 원래 클립의 페이드는 바깥쪽 끝에만 남긴다. 자른 자리에서도 잦아들면
+  // 한 장면 한가운데가 갑자기 어두워지고 소리가 끊긴다.
+  left.fadeOut = 0
+  right.fadeIn = 0
 
   return {
     items: [...items.slice(0, located.index), left, right, ...items.slice(located.index + 1)],
@@ -128,7 +133,7 @@ export function trimItem(
   const item = items[index]
   const next = { ...item }
 
-  if (item.type === 'video') {
+  if (usesSourceTime(item)) {
     const source = sources.find((candidate) => candidate.id === item.sourceId)
     const limit = source?.durationSeconds ?? item.outPoint
 
@@ -209,7 +214,7 @@ export function setItemDuration(
   seconds: number,
 ): TimelineItem[] | null {
   const index = items.findIndex((item) => item.id === id)
-  if (index === -1 || items[index].type === 'video') return null
+  if (index === -1 || usesSourceTime(items[index])) return null
 
   const next = [...items]
   next[index] = { ...items[index], duration: Math.max(MIN_CLIP_SECONDS, seconds) }
@@ -246,4 +251,37 @@ export function setBlankColor(
   const next = [...items]
   next[index] = { ...items[index], color }
   return next
+}
+
+/** 클립 하나의 앞뒤 페이드를 바꾼다. */
+export function setItemFade(
+  items: TimelineItem[],
+  id: string,
+  patch: { fadeIn?: number; fadeOut?: number },
+): TimelineItem[] | null {
+  const index = items.findIndex((item) => item.id === id)
+  if (index === -1) return null
+
+  const next = [...items]
+  next[index] = {
+    ...items[index],
+    ...(patch.fadeIn === undefined ? {} : { fadeIn: clamp(patch.fadeIn, 0, MAX_FADE_SECONDS) }),
+    ...(patch.fadeOut === undefined ? {} : { fadeOut: clamp(patch.fadeOut, 0, MAX_FADE_SECONDS) }),
+  }
+  return next
+}
+
+/**
+ * 모든 컷 사이에 같은 길이의 페이드를 건다. 0 이면 모두 뺀다.
+ *
+ * 컷 사이라는 건 앞 클립의 끝과 뒤 클립의 시작이다. 맨 처음과 맨 끝은 이음매가
+ * 아니므로 건드리지 않는다 — 그래야 다시 눌러 바꿔도 처음·끝 페이드를 잃지 않는다.
+ */
+export function setSeamFades(items: TimelineItem[], seconds: number): TimelineItem[] {
+  const value = clamp(seconds, 0, MAX_FADE_SECONDS)
+  return items.map((item, index) => ({
+    ...item,
+    ...(index < items.length - 1 ? { fadeOut: value } : {}),
+    ...(index > 0 ? { fadeIn: value } : {}),
+  }))
 }

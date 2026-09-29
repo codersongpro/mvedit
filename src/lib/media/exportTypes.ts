@@ -64,7 +64,7 @@ export interface ExportJob {
   /** 원본 id → 파일 */
   files: Array<[string, File]>
   /** 원본 id → 종류 */
-  kinds: Array<[string, 'video' | 'image']>
+  kinds: Array<[string, 'video' | 'image' | 'audio']>
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
   setting: ExportSetting

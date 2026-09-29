@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { findSource, useProject } from '../lib/project/store'
-import { segmentAt, sourceTimeAt, toSegments } from '../lib/project/playback'
+import { fadeFactor, segmentAt, sourceTimeAt, toSegments } from '../lib/project/playback'
 import { subtitleAt } from '../lib/project/subtitles'
 import { SubtitleOverlay } from './SubtitleOverlay'
-import { timelineDuration } from '../lib/project/types'
+import { timelineDuration, usesSourceTime } from '../lib/project/types'
 import { computeOutputSize } from '../lib/media/outputSize'
 import { useIsMobile } from '../lib/useIsMobile'
 import { formatClock } from '../lib/format'
-import { PauseIcon, PlayArrowIcon, TextFieldsIcon } from './icons'
+import { MusicNoteIcon, PauseIcon, PlayArrowIcon, TextFieldsIcon } from './icons'
 import { TextField, btn } from './m3'
 import { MAX_SUBTITLE_LENGTH } from '../lib/project/types'
 
@@ -46,6 +46,8 @@ export function Preview() {
   const total = timelineDuration(timeline)
   const current = segmentAt(segments, playhead)
   const currentSource = findSource(sources, current?.item.sourceId ?? null)
+  // 페이드는 화면과 소리에 같은 배율을 쓴다. 내보내기와 같은 곡선이다.
+  const fade = current ? fadeFactor(current.item, playhead - current.start) : 1
   const currentSubtitle = current
     ? subtitleAt(subtitles, current.item, sourceTimeAt(current, playhead))
     : null
@@ -100,9 +102,14 @@ export function Preview() {
       context.fillRect(0, 0, canvas.width, canvas.height)
       return
     }
+    if (item?.type === 'audio') {
+      context.fillStyle = '#000000'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      return
+    }
 
     const media =
-      item?.type === 'video'
+      item && usesSourceTime(item)
         ? (videoRefs.current.get(item.sourceId ?? '') ?? null)
         : imageRef.current
     const mediaWidth =
@@ -142,7 +149,7 @@ export function Preview() {
   // 구간이 바뀌거나 재생 상태가 바뀔 때 영상 요소를 맞춘다.
   useEffect(() => {
     const item = current?.item
-    const activeId = item?.type === 'video' ? item.sourceId : null
+    const activeId = item && usesSourceTime(item) ? item.sourceId : null
     pauseOthers(activeId)
 
     const video = activeId ? videoRefs.current.get(activeId) : null
@@ -151,7 +158,8 @@ export function Preview() {
     video.muted = item.muted
     // HTMLMediaElement 는 100% 를 넘는 볼륨을 받지 못한다. 그 이상은
     // 내보낼 때 적용되고, 미리보기에서는 100% 로 들린다.
-    video.volume = Math.min(1, Math.max(0, item.volume))
+    video.volume =
+      Math.min(1, Math.max(0, item.volume)) * fadeFactor(item, playheadRef.current - current.start)
 
     const expected = sourceTimeAt(current, playheadRef.current)
     if (Math.abs(video.currentTime - expected) > SYNC_TOLERANCE) {
@@ -161,6 +169,15 @@ export function Preview() {
     if (playing) void video.play().catch(() => setPlaying(false))
     else video.pause()
   }, [current, playing, pauseOthers, setPlaying])
+
+  // 페이드는 재생헤드가 움직이는 동안 계속 바뀐다. 클립이 바뀔 때만 맞추면
+  // 소리가 페이드 없이 그대로 들린다.
+  useEffect(() => {
+    const item = current?.item
+    if (!item || !usesSourceTime(item)) return
+    const video = videoRefs.current.get(item.sourceId ?? '')
+    if (video) video.volume = Math.min(1, Math.max(0, item.volume)) * fade
+  }, [current, fade])
 
   // 방금 넣은 자막의 입력칸이 그려진 뒤에 바로 쓸 수 있게 한다. 버튼을 누른
   // 그 자리에서 포커스를 옮기면 입력칸이 아직 없을 때가 있고(모바일), 그러면
@@ -177,7 +194,7 @@ export function Preview() {
   // 예전 장면에 멈춰 있어, 자를 자리를 눈으로 찾을 수 없다. 재생 중에는
   // 영상 시각이 재생헤드를 이끄므로 여기서 건드리지 않는다.
   useEffect(() => {
-    if (playing || current?.item.type !== 'video') return
+    if (playing || !current || !usesSourceTime(current.item)) return
     const video = videoRefs.current.get(current.item.sourceId ?? '')
     if (!video) return
     const expected = sourceTimeAt(current, playhead)
@@ -192,7 +209,7 @@ export function Preview() {
   useEffect(() => {
     if (!playing || !current) return
     const next = segments[current.index + 1]
-    if (!next || next.item.type !== 'video') return
+    if (!next || !usesSourceTime(next.item)) return
     if (next.item.sourceId === current.item.sourceId) return
 
     const video = videoRefs.current.get(next.item.sourceId ?? '')
@@ -222,7 +239,7 @@ export function Preview() {
       }
 
       let next: number
-      if (segment.item.type === 'video') {
+      if (usesSourceTime(segment.item)) {
         const video = videoRefs.current.get(segment.item.sourceId ?? '')
         next = video
           ? segment.start + (video.currentTime - segment.item.inPoint)
@@ -243,14 +260,15 @@ export function Preview() {
 
         // 리액트가 다시 그리기를 기다리지 않고 바로 넘긴다. 한 프레임이라도
         // 늦으면 클립 경계에서 끊기는 것이 눈에 보인다.
-        if (following.item.type === 'video') {
+        if (usesSourceTime(following.item)) {
           const upcoming = videoRefs.current.get(following.item.sourceId ?? '')
           if (upcoming) {
             if (Math.abs(upcoming.currentTime - following.item.inPoint) > SYNC_TOLERANCE) {
               upcoming.currentTime = following.item.inPoint
             }
             upcoming.muted = following.item.muted
-            upcoming.volume = Math.min(1, Math.max(0, following.item.volume))
+            upcoming.volume =
+              Math.min(1, Math.max(0, following.item.volume)) * fadeFactor(following.item, 0)
             void upcoming.play().catch(() => {})
           }
         }
@@ -305,7 +323,9 @@ export function Preview() {
         )}
 
         {sources
-          .filter((source) => source.kind === 'video')
+          // 음원도 video 요소로 재생한다. 소리만 있는 파일도 재생·탐색이 같고,
+          // 요소를 하나로 통일하면 클립 전환 코드가 갈라지지 않는다.
+          .filter((source) => source.kind !== 'image')
           .map((source) => (
             <video
               key={source.id}
@@ -335,6 +355,16 @@ export function Preview() {
           />
         )}
 
+        {kind === 'audio' && (
+          <div
+            data-testid="preview-audio"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant"
+          >
+            <MusicNoteIcon size={56} />
+            <span className="m3-label-large">{currentSource?.fileName}</span>
+          </div>
+        )}
+
         {kind === 'blank' && (
           <div
             data-testid="preview-blank"
@@ -344,6 +374,16 @@ export function Preview() {
         )}
 
         {currentSubtitle && <SubtitleOverlay text={currentSubtitle.text} style={subtitleStyle} />}
+
+        {/* 페이드는 자막까지 덮는다. 내보내기 결과와 같게 보이려는 것. */}
+        {fade < 1 && (
+          <div
+            data-testid="preview-fade"
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-black"
+            style={{ opacity: 1 - fade }}
+          />
+        )}
       </div>
 
       <div className="flex items-center gap-4">
@@ -367,7 +407,7 @@ export function Preview() {
         <button
           type="button"
           data-testid="add-subtitle"
-          disabled={!current}
+          disabled={!current || current.item.type === 'audio'}
           onClick={() => {
             focusNewSubtitleRef.current = true
             addSubtitle()
