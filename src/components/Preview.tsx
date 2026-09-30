@@ -5,6 +5,7 @@ import { subtitleAt } from '../lib/project/subtitles'
 import { SubtitleOverlay } from './SubtitleOverlay'
 import { timelineDuration, usesSourceTime } from '../lib/project/types'
 import { computeOutputSize } from '../lib/media/outputSize'
+import { setPreviewVolume, unlockPreviewAudio } from '../lib/previewVolume'
 import { useIsMobile } from '../lib/useIsMobile'
 import { formatClock } from '../lib/format'
 import { MusicNoteIcon, PauseIcon, PlayArrowIcon, TextFieldsIcon } from './icons'
@@ -81,6 +82,16 @@ export function Preview() {
     return map
   }, [sources])
 
+  // 재생 버튼 말고 스페이스 키로 시작해도 오디오가 열리게, 첫 조작에서 미리 연다.
+  useEffect(() => {
+    window.addEventListener('pointerdown', unlockPreviewAudio, { once: true })
+    window.addEventListener('keydown', unlockPreviewAudio, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', unlockPreviewAudio)
+      window.removeEventListener('keydown', unlockPreviewAudio)
+    }
+  }, [])
+
   useEffect(() => () => objectUrls.forEach((url) => URL.revokeObjectURL(url)), [objectUrls])
 
   /**
@@ -156,10 +167,8 @@ export function Preview() {
     if (!video || !current || !item) return
 
     video.muted = item.muted
-    // HTMLMediaElement 는 100% 를 넘는 볼륨을 받지 못한다. 그 이상은
-    // 내보낼 때 적용되고, 미리보기에서는 100% 로 들린다.
-    video.volume =
-      Math.min(1, Math.max(0, item.volume)) * fadeFactor(item, playheadRef.current - current.start)
+    // 소리 크기는 페이드와 함께 웹 오디오 게인으로 맞춘다(iOS 는 요소 볼륨을 무시한다).
+    setPreviewVolume(video, item.volume * fadeFactor(item, playheadRef.current - current.start))
 
     const expected = sourceTimeAt(current, playheadRef.current)
     if (Math.abs(video.currentTime - expected) > SYNC_TOLERANCE) {
@@ -176,7 +185,7 @@ export function Preview() {
     const item = current?.item
     if (!item || !usesSourceTime(item)) return
     const video = videoRefs.current.get(item.sourceId ?? '')
-    if (video) video.volume = Math.min(1, Math.max(0, item.volume)) * fade
+    if (video) setPreviewVolume(video, item.volume * fade)
   }, [current, fade])
 
   // 방금 넣은 자막의 입력칸이 그려진 뒤에 바로 쓸 수 있게 한다. 버튼을 누른
@@ -267,8 +276,7 @@ export function Preview() {
               upcoming.currentTime = following.item.inPoint
             }
             upcoming.muted = following.item.muted
-            upcoming.volume =
-              Math.min(1, Math.max(0, following.item.volume)) * fadeFactor(following.item, 0)
+            setPreviewVolume(upcoming, following.item.volume * fadeFactor(following.item, 0))
             void upcoming.play().catch(() => {})
           }
         }
@@ -391,7 +399,11 @@ export function Preview() {
           type="button"
           data-testid="play-toggle"
           aria-label={playing ? '정지' : '재생'}
-          onClick={togglePlay}
+          onClick={() => {
+            // 오디오는 이 클릭 안에서 열어야 브라우저가 허락한다.
+            unlockPreviewAudio()
+            togglePlay()
+          }}
           className={`state-layer flex shrink-0 items-center justify-center rounded-full bg-primary text-on-primary ${
             mobile ? 'h-12 w-12' : 'h-14 w-14'
           }`}

@@ -116,6 +116,19 @@ try {
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(String(error)))
 
+  // 미리보기 소리는 웹 오디오 게인으로 줄인다. 게인에 쓰이는 값을 기록해 페이드가 들어갔는지 본다.
+  await page.addInitScript(() => {
+    const desc = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value')
+    globalThis.__gainWrites = []
+    Object.defineProperty(AudioParam.prototype, 'value', {
+      get: desc.get,
+      set(next) {
+        globalThis.__gainWrites.push(next)
+        desc.set.call(this, next)
+      },
+    })
+  })
+
   const installHelpers = (target) =>
     target.evaluate(async (source) => {
       const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
@@ -292,6 +305,28 @@ try {
   await selectClip(0)
   await page.click('[data-testid="seam-fade-toggle"]')
   await page.waitForSelector('[data-testid="clip-fade-out"]')
+  // 미리보기 재생: 이음매 앞뒤에서 소리 배율이 실제로 내려갔다 올라온다.
+  await seekTo(3)
+  await page.click('[data-testid="play-toggle"]')
+  await page.waitForFunction(
+    () => Number(document.querySelector('[data-testid="playhead"]').dataset.seconds) > 4.6,
+    undefined,
+    { timeout: 20_000 },
+  )
+  await page.click('[data-testid="play-toggle"]')
+  const gains = await page.evaluate(() => globalThis.__gainWrites)
+  console.log(
+    '  미리보기 게인 최저:',
+    Math.min(...gains).toFixed(2),
+    '최고:',
+    Math.max(...gains).toFixed(2),
+  )
+  check(
+    '미리보기 소리: 페이드로 배율이 크게 내려간다',
+    gains.length > 0 && Math.min(...gains) < 0.3,
+  )
+  check('미리보기 소리: 페이드 밖에서는 원래 크기다', Math.max(...gains) >= 0.99)
+
   const videos = await exportAndSave('videos')
   const videoInfo = await inWorkerPage(
     ([bundle, data, mime]) =>
