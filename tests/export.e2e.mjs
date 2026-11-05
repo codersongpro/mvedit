@@ -99,8 +99,11 @@ try {
     const shownH = rotation % 180 === 0 ? FIXTURE.heightPx : FIXTURE.widthPx
     // 기본 해상도는 원본을 따라가되 목록의 최솟값이 480p 다 (fitResolution).
     // 320×240 원본은 480p 로 올라가지만 비율은 그대로 유지돼야 한다.
-    const expectedH = 480
-    const expectedW = Math.round((expectedH * shownW) / shownH / 2) * 2
+    // 해상도(480p)는 짧은 변이다. 세로로 보이는 영상은 가로가 480 이 된다 (FR-016).
+    const even = (value) => Math.round(value / 2) * 2
+    const portrait = shownH > shownW
+    const expectedW = portrait ? 480 : even((480 * shownW) / shownH)
+    const expectedH = portrait ? even((480 * shownH) / shownW) : 480
 
     check(
       `[${label}] 타임라인에 클립 1개`,

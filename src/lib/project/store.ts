@@ -4,18 +4,26 @@ import type {
   MediaSource,
   RejectedFile,
   Subtitle,
+  SubtitleEffect,
+  Moment,
+  MomentKind,
+  Sticker,
+  StickerKind,
   SubtitleStyle,
   TimelineItem,
+  TransitionId,
 } from './types'
 import {
   DEFAULT_EXPORT_SETTING,
+  DEFAULT_FADE_SECONDS,
   DEFAULT_SUBTITLE_SECONDS,
   DEFAULT_SUBTITLE_STYLE,
   MIN_SUBTITLE_SECONDS,
   timelineDuration,
 } from './types'
 import type { ProjectFile } from './file'
-import { fitResolution } from '../media/outputSize'
+import { fitResolution, shortSide } from '../media/outputSize'
+import { DEFAULT_STICKER_SECONDS, DEFAULT_STICKER_SIZE } from '../media/stickers'
 import { segmentAt, sourceTimeAt, toSegments } from './playback'
 import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
 import {
@@ -86,14 +94,42 @@ interface ProjectState {
   setFade: (id: string, patch: { fadeIn?: number; fadeOut?: number }) => void
   /** 모든 컷 사이에 같은 길이의 페이드를 건다. 0 이면 뺀다. */
   setSeamFades: (seconds: number) => void
+  /** 클립 하나의 화면 효과(FR-047) */
+  setVisual: (id: string, patch: Pick<TimelineItem, 'filter' | 'zoom' | 'transition'>) => void
+  /**
+   * 모든 클립의 전환 모양을 바꾼다. 컷 사이 페이드가 없으면 전환이 보이지
+   * 않으므로 기본 길이로 함께 건다. 한 번의 되돌리기로 둘 다 돌아간다.
+   */
+  setTransitionAll: (transition: TransitionId) => void
+  /** 재생헤드 자리에 순간 효과를 넣는다 (FR-048) */
+  addMoment: (kind: MomentKind) => void
+  /** 재생헤드 자리에 스티커를 넣고 고른다 */
+  addSticker: (kind: StickerKind) => void
+  updateSticker: (
+    clipId: string,
+    id: string,
+    patch: Partial<Pick<Sticker, 'x' | 'y' | 'size' | 'start' | 'end'>>,
+  ) => void
+  /** 순간 효과나 스티커 하나를 지운다 */
+  removeOverlay: (clipId: string, id: string) => void
   setColor: (id: string, color: string) => void
   removeSelected: () => void
   moveSelected: (delta: number) => void
   trim: (id: string, edge: TrimEdge, offsetInClip: number) => void
 
   addSubtitle: (text?: string) => void
-  updateSubtitle: (id: string, patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end'>>) => void
+  updateSubtitle: (
+    id: string,
+    patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end' | 'effect'>>,
+  ) => void
+  /** 한 자막의 꾸미기를 모든 자막에 똑같이. 위치는 자막마다 다르므로 옮기지 않는다. */
+  applyEffectToAll: (effect: SubtitleEffect) => void
   removeSubtitle: (id: string) => void
+  /** 자동 자막 결과를 넣는다. replace 면 해당 클립의 기존 자막을 먼저 지운다. */
+  applyAutoSubtitles: (
+    results: { clipId: string; lines: Omit<Subtitle, 'id' | 'clipId'>[] }[],
+    mode: 'replace' | 'append',
+  ) => void
   setSubtitleStyle: (patch: Partial<SubtitleStyle>) => void
   setExportSetting: (patch: Partial<ExportSetting>) => void
 
@@ -162,7 +198,9 @@ function defaultSettingFor(
   if (!first) return state.exportSetting
   return {
     ...state.exportSetting,
-    resolution: fitResolution(first.displayHeight),
+    resolution: fitResolution(
+      shortSide({ width: first.displayWidth, height: first.displayHeight }),
+    ),
   }
 }
 
@@ -312,6 +350,93 @@ export const useProject = create<ProjectState>((set, get) => {
       commit(setSeamFades(timeline, seconds))
     },
 
+    setVisual: (id, patch) => {
+      const { timeline } = get()
+      if (!timeline.some((item) => item.id === id)) return
+      commit(timeline.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+    },
+
+    setTransitionAll: (transition) => {
+      const { timeline } = get()
+      const seamless = timeline.every(
+        (item, index) =>
+          (index === 0 || !(item.fadeIn ?? 0)) &&
+          (index === timeline.length - 1 || !(item.fadeOut ?? 0)),
+      )
+      const faded =
+        seamless && timeline.length > 1 ? setSeamFades(timeline, DEFAULT_FADE_SECONDS) : timeline
+      commit(faded.map((item) => ({ ...item, transition })))
+    },
+
+    addMoment: (kind) => {
+      const found = locate()
+      if (!found || found.segment.item.type === 'audio') return
+      const { segment, sourceTime } = found
+      const moment: Moment = { id: crypto.randomUUID(), kind, time: sourceTime }
+      commit(
+        get().timeline.map((item) =>
+          item.id === segment.item.id
+            ? { ...item, moments: [...(item.moments ?? []), moment] }
+            : item,
+        ),
+      )
+    },
+
+    addSticker: (kind) => {
+      const found = locate()
+      if (!found || found.segment.item.type === 'audio') return
+      const { segment, sourceTime } = found
+      const range = clipRange(segment.item)
+      const end = Math.min(sourceTime + DEFAULT_STICKER_SECONDS, range.end)
+      if (end - sourceTime < MIN_SUBTITLE_SECONDS) return
+      const sticker: Sticker = {
+        id: crypto.randomUUID(),
+        kind,
+        start: sourceTime,
+        end,
+        // 자막(아래 가운데)과 겹치지 않게 오른쪽 위에 둔다.
+        x: 0.75,
+        y: 0.3,
+        size: DEFAULT_STICKER_SIZE,
+      }
+      commit(
+        get().timeline.map((item) =>
+          item.id === segment.item.id
+            ? { ...item, stickers: [...(item.stickers ?? []), sticker] }
+            : item,
+        ),
+      )
+    },
+
+    updateSticker: (clipId, id, patch) => {
+      commit(
+        get().timeline.map((item) =>
+          item.id === clipId
+            ? {
+                ...item,
+                stickers: (item.stickers ?? []).map((sticker) =>
+                  sticker.id === id ? { ...sticker, ...patch } : sticker,
+                ),
+              }
+            : item,
+        ),
+      )
+    },
+
+    removeOverlay: (clipId, id) => {
+      commit(
+        get().timeline.map((item) =>
+          item.id === clipId
+            ? {
+                ...item,
+                moments: (item.moments ?? []).filter((moment) => moment.id !== id),
+                stickers: (item.stickers ?? []).filter((sticker) => sticker.id !== id),
+              }
+            : item,
+        ),
+      )
+    },
+
     setColor: (id, color) => {
       const next = setBlankColor(get().timeline, id, color)
       if (next) commit(next)
@@ -369,8 +494,46 @@ export const useProject = create<ProjectState>((set, get) => {
       if (!item) return
 
       const next = [...subtitles]
-      next[index] = normalizeSubtitle({ ...subtitles[index], ...patch }, item)
+      const merged = { ...subtitles[index], ...patch }
+      if (patch.text !== undefined && patch.text !== subtitles[index].text) delete merged.words
+      next[index] = normalizeSubtitle(merged, item)
       commit(timeline, next)
+    },
+
+    applyEffectToAll: (effect) => {
+      const { timeline, subtitles } = get()
+      const { position: _ignored, ...shared } = effect
+      commit(
+        timeline,
+        subtitles.map((subtitle) => ({
+          ...subtitle,
+          effect: {
+            ...shared,
+            ...(subtitle.effect?.position && { position: subtitle.effect.position }),
+          },
+        })),
+      )
+    },
+
+    applyAutoSubtitles: (results, mode) => {
+      const { timeline, subtitles } = get()
+      const items = new Map(timeline.map((item) => [item.id, item]))
+      const touched = new Set(results.map((result) => result.clipId))
+      const kept =
+        mode === 'replace'
+          ? subtitles.filter((subtitle) => !touched.has(subtitle.clipId))
+          : subtitles
+      const created: Subtitle[] = []
+      for (const { clipId, lines } of results) {
+        const item = items.get(clipId)
+        // 인식하는 동안 클립이 지워졌으면 결과도 버린다.
+        if (!item) continue
+        for (const line of lines) {
+          created.push(normalizeSubtitle({ ...line, id: crypto.randomUUID(), clipId }, item))
+        }
+      }
+      // 클립 여러 개를 한 번에 처리해도 되돌리기 한 번으로 통째로 돌아가야 한다.
+      commit(timeline, [...kept, ...created])
     },
 
     removeSubtitle: (id) => {

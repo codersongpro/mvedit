@@ -50,7 +50,50 @@ export interface TimelineItem {
    */
   fadeIn?: number
   fadeOut?: number
+  /** 화면 특수효과 (FR-047). 없으면 효과 없음. 계산은 media/visualFx */
+  filter?: FilterId
+  zoom?: ZoomId
+  /** 페이드 구간이 어떻게 잦아드는가. 없으면 검정(FR-043 그대로) */
+  transition?: TransitionId
+  /** 순간 효과(흔들림·번쩍). 시각은 자막과 같은 원본 시간축 */
+  moments?: Moment[]
+  /** 스티커. 시각은 자막과 같은 원본 시간축 */
+  stickers?: Sticker[]
 }
+
+export type MomentKind = 'shake' | 'flash'
+
+export interface Moment {
+  id: string
+  kind: MomentKind
+  time: number
+}
+
+export type StickerKind =
+  | 'heart'
+  | 'star'
+  | 'arrow'
+  | 'check'
+  | 'alert'
+  | 'question'
+  | 'ring'
+  | 'sparkle'
+
+export interface Sticker {
+  id: string
+  kind: StickerKind
+  start: number
+  end: number
+  /** 가운데 위치. x 는 왼쪽에서, y 는 위에서부터의 비율 */
+  x: number
+  y: number
+  /** 화면 높이 대비 크기 */
+  size: number
+}
+
+export type FilterId = 'none' | 'mono' | 'warm' | 'cool' | 'vivid' | 'vintage'
+export type ZoomId = 'none' | 'in' | 'out' | 'punch'
+export type TransitionId = 'black' | 'white' | 'slide' | 'zoom' | 'blur'
 
 /** 원본 시간축을 쓰는 클립인가. 영상과 음원은 inPoint~outPoint 로 구간을 잡는다. */
 export function usesSourceTime(item: Pick<TimelineItem, 'type'>): boolean {
@@ -105,6 +148,34 @@ export interface Subtitle {
   start: number
   end: number
   text: string
+  /**
+   * 자동 자막만 갖는 단어별 시각(원본 시간축). 단어 하이라이트의 근거다.
+   * 사람이 글자를 고치면 단어와 시각이 더는 맞지 않으므로 지운다.
+   */
+  words?: SubtitleWord[]
+  /** 이 자막만의 꾸미기(FR-046). 없으면 프로젝트 자막 모양 그대로 */
+  effect?: SubtitleEffect
+}
+
+export type SubtitlePreset = 'basic' | 'variety' | 'neon' | 'news' | 'bubble'
+export type SubtitleAnimation = 'none' | 'fade' | 'pop' | 'slide' | 'typing'
+
+export interface SubtitleEffect {
+  preset?: SubtitlePreset
+  animation?: SubtitleAnimation
+  /** 말하는 단어만 강조색으로 */
+  highlight?: boolean
+  /**
+   * 화면 속 위치. x 는 가운데의 가로 비율, y 는 아래에서부터의 비율.
+   * 없으면 프로젝트 자막 모양의 세로 위치에 가운데 정렬.
+   */
+  position?: { x: number; y: number }
+}
+
+export interface SubtitleWord {
+  text: string
+  start: number
+  end: number
 }
 
 /** 프로젝트 전체에 한 벌만 둔다 (FR-036). */

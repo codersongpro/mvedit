@@ -4,6 +4,7 @@ import { DEFAULT_FADE_SECONDS, MAX_FADE_SECONDS, itemDuration } from '../lib/pro
 import { formatClock } from '../lib/format'
 import { MicIcon, MicOffIcon } from './icons'
 import { Chip, TextField } from './m3'
+import { ClipEffects } from './ClipEffects'
 
 const BLANK_COLORS = [
   { value: '#000000', label: '검정' },
@@ -184,6 +185,9 @@ export function ClipInspector() {
           </div>
         </div>
       )}
+
+      {/* 음원은 화면이 없어 효과를 걸 곳이 없다. */}
+      {item.type !== 'audio' && <ClipEffects item={item} />}
     </div>
   )
 }

@@ -13,14 +13,18 @@ export async function buildFixture({
   fps,
   rotation = 0,
   pattern = 'plain',
+  // 0 이면 무음. 자동 자막이 조용한 구간을 걸러 내는지 볼 때 쓴다.
+  audioAmplitude = 0.25,
 }) {
   const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
   const mb = await import(/* @vite-ignore */ url)
 
   // 컨테이너 Chromium은 H.264·AAC 인코딩이 없으므로 가능한 조합을 고른다.
-  const videoCodec = (await mb.canEncodeVideo('avc')) ? 'avc' : 'vp9'
-  const audioCodec = (await mb.canEncodeAudio('aac')) ? 'aac' : 'opus'
-  const isMp4 = videoCodec === 'avc' && audioCodec === 'aac'
+  // 둘 중 하나만 되는 브라우저가 있다(H.264 는 되고 AAC 는 안 되는 경우).
+  // WebM 에는 H.264 를 못 담으므로 둘 다 될 때만 MP4 로 간다.
+  const isMp4 = (await mb.canEncodeVideo('avc')) && (await mb.canEncodeAudio('aac'))
+  const videoCodec = isMp4 ? 'avc' : 'vp9'
+  const audioCodec = isMp4 ? 'aac' : 'opus'
 
   const output = new mb.Output({
     format: isMp4 ? new mb.Mp4OutputFormat() : new mb.WebMOutputFormat(),
@@ -77,7 +81,7 @@ export async function buildFixture({
   const buffer = audioCtx.createBuffer(1, Math.round(sampleRate * durationSec), sampleRate)
   const channel = buffer.getChannelData(0)
   for (let i = 0; i < channel.length; i += 1) {
-    channel[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.25
+    channel[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * audioAmplitude
   }
   await audioSource.add(buffer)
   audioSource.close()
@@ -212,6 +216,43 @@ export async function inspectAudioFile({ bundleSource, bytes, mimeType }) {
     sampleRate: await track.getSampleRate(),
     channels: await track.getNumberOfChannels(),
     audioEnergy: buckets,
+  }
+  input.dispose()
+  URL.revokeObjectURL(url)
+  return result
+}
+
+/**
+ * 시각별로 화면의 위·아래 절반에서 주어진 색에 가까운 픽셀 수를 센다.
+ * 특수자막(강조색·위치)이 결과물에 그대로 새겨졌는지 보려는 것.
+ */
+export async function countColor({ bundleSource, bytes, mimeType, times, color, tolerance = 60 }) {
+  const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
+  const mb = await import(/* @vite-ignore */ url)
+  const blob = new Blob([new Uint8Array(bytes)], { type: mimeType })
+  const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS })
+  const sink = new mb.VideoSampleSink(await input.getPrimaryVideoTrack())
+
+  const result = []
+  for (const time of times) {
+    const sample = await sink.getSample(time)
+    const canvas = document.createElement('canvas')
+    canvas.width = sample.displayWidth
+    canvas.height = sample.displayHeight
+    const ctx = canvas.getContext('2d')
+    sample.draw(ctx, 0, 0)
+    sample.close()
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    let top = 0
+    let bottom = 0
+    for (let i = 0; i < data.length; i += 4) {
+      const distance =
+        Math.abs(data[i] - color[0]) + Math.abs(data[i + 1] - color[1]) + Math.abs(data[i + 2] - color[2])
+      if (distance > tolerance) continue
+      if (i / 4 / canvas.width < canvas.height / 2) top += 1
+      else bottom += 1
+    }
+    result.push({ time, top, bottom })
   }
   input.dispose()
   URL.revokeObjectURL(url)

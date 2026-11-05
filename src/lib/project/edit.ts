@@ -1,3 +1,4 @@
+import { splitOverlays } from '../media/stickers'
 import {
   DEFAULT_BLANK_COLOR,
   DEFAULT_BLANK_DURATION,
@@ -81,6 +82,12 @@ export function splitAt(items: TimelineItem[], playhead: number): SplitResult | 
   // 한 장면 한가운데가 갑자기 어두워지고 소리가 끊긴다.
   left.fadeOut = 0
   right.fadeIn = 0
+  // 순간 효과·스티커도 자막처럼 자른 자리에서 나눈다 (FR-048).
+  if (item.moments?.length || item.stickers?.length) {
+    const parts = splitOverlays(item, cut)
+    Object.assign(left, parts.left)
+    Object.assign(right, parts.right)
+  }
 
   return {
     items: [...items.slice(0, located.index), left, right, ...items.slice(located.index + 1)],

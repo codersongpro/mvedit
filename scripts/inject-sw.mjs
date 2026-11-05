@@ -15,14 +15,23 @@ const dist = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'dist')
 /** 서비스 워커 자신은 캐시하지 않는다. 그러면 새 버전을 영영 못 받는다. */
 const SKIP = new Set(['sw.js'])
 
+/**
+ * 이보다 큰 파일은 미리 받지 않는다. 음성 인식 엔진(수십 MB)이 여기 걸린다.
+ * 자동 자막을 안 쓰는 사람까지 첫 방문에 그만큼 받게 할 수는 없다. 처음 쓸 때
+ * 서비스 워커가 받은 그대로 캐시에 담으므로 그 뒤로는 오프라인에서도 돈다.
+ */
+const MAX_PRECACHE_BYTES = 5 * 1024 * 1024
+
 async function collect(dir) {
   const found = []
   for (const entry of await readdir(dir)) {
     const full = join(dir, entry)
-    if ((await stat(full)).isDirectory()) {
+    const info = await stat(full)
+    if (info.isDirectory()) {
       found.push(...(await collect(full)))
       continue
     }
+    if (info.size > MAX_PRECACHE_BYTES) continue
     const path = `/${relative(dist, full).split('\\').join('/')}`
     if (!SKIP.has(path.slice(1))) found.push(path)
   }

@@ -21,7 +21,7 @@
 
 ```bash
 npm run build   # 타입 검사 + 빌드 + 서비스 워커 캐시 목록 주입
-npm test        # 11개 스위트 전부 (Playwright, 실제 UI 로 확인)
+npm test        # 16개 스위트 전부 (Playwright, 실제 UI 로 확인)
 ```
 
 - 모든 검증은 **프로덕션 빌드를 띄워** 돌린다. 코드를 고쳤으면 빌드부터 한다.
