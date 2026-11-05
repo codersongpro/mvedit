@@ -5,11 +5,17 @@ import type {
   RejectedFile,
   Subtitle,
   SubtitleEffect,
+  Moment,
+  MomentKind,
+  Sticker,
+  StickerKind,
   SubtitleStyle,
   TimelineItem,
+  TransitionId,
 } from './types'
 import {
   DEFAULT_EXPORT_SETTING,
+  DEFAULT_FADE_SECONDS,
   DEFAULT_SUBTITLE_SECONDS,
   DEFAULT_SUBTITLE_STYLE,
   MIN_SUBTITLE_SECONDS,
@@ -17,6 +23,7 @@ import {
 } from './types'
 import type { ProjectFile } from './file'
 import { fitResolution, shortSide } from '../media/outputSize'
+import { DEFAULT_STICKER_SECONDS, DEFAULT_STICKER_SIZE } from '../media/stickers'
 import { segmentAt, sourceTimeAt, toSegments } from './playback'
 import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
 import {
@@ -87,6 +94,24 @@ interface ProjectState {
   setFade: (id: string, patch: { fadeIn?: number; fadeOut?: number }) => void
   /** 모든 컷 사이에 같은 길이의 페이드를 건다. 0 이면 뺀다. */
   setSeamFades: (seconds: number) => void
+  /** 클립 하나의 화면 효과(FR-047) */
+  setVisual: (id: string, patch: Pick<TimelineItem, 'filter' | 'zoom' | 'transition'>) => void
+  /**
+   * 모든 클립의 전환 모양을 바꾼다. 컷 사이 페이드가 없으면 전환이 보이지
+   * 않으므로 기본 길이로 함께 건다. 한 번의 되돌리기로 둘 다 돌아간다.
+   */
+  setTransitionAll: (transition: TransitionId) => void
+  /** 재생헤드 자리에 순간 효과를 넣는다 (FR-048) */
+  addMoment: (kind: MomentKind) => void
+  /** 재생헤드 자리에 스티커를 넣고 고른다 */
+  addSticker: (kind: StickerKind) => void
+  updateSticker: (
+    clipId: string,
+    id: string,
+    patch: Partial<Pick<Sticker, 'x' | 'y' | 'size' | 'start' | 'end'>>,
+  ) => void
+  /** 순간 효과나 스티커 하나를 지운다 */
+  removeOverlay: (clipId: string, id: string) => void
   setColor: (id: string, color: string) => void
   removeSelected: () => void
   moveSelected: (delta: number) => void
@@ -323,6 +348,93 @@ export const useProject = create<ProjectState>((set, get) => {
       const { timeline } = get()
       if (timeline.length < 2) return
       commit(setSeamFades(timeline, seconds))
+    },
+
+    setVisual: (id, patch) => {
+      const { timeline } = get()
+      if (!timeline.some((item) => item.id === id)) return
+      commit(timeline.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+    },
+
+    setTransitionAll: (transition) => {
+      const { timeline } = get()
+      const seamless = timeline.every(
+        (item, index) =>
+          (index === 0 || !(item.fadeIn ?? 0)) &&
+          (index === timeline.length - 1 || !(item.fadeOut ?? 0)),
+      )
+      const faded =
+        seamless && timeline.length > 1 ? setSeamFades(timeline, DEFAULT_FADE_SECONDS) : timeline
+      commit(faded.map((item) => ({ ...item, transition })))
+    },
+
+    addMoment: (kind) => {
+      const found = locate()
+      if (!found || found.segment.item.type === 'audio') return
+      const { segment, sourceTime } = found
+      const moment: Moment = { id: crypto.randomUUID(), kind, time: sourceTime }
+      commit(
+        get().timeline.map((item) =>
+          item.id === segment.item.id
+            ? { ...item, moments: [...(item.moments ?? []), moment] }
+            : item,
+        ),
+      )
+    },
+
+    addSticker: (kind) => {
+      const found = locate()
+      if (!found || found.segment.item.type === 'audio') return
+      const { segment, sourceTime } = found
+      const range = clipRange(segment.item)
+      const end = Math.min(sourceTime + DEFAULT_STICKER_SECONDS, range.end)
+      if (end - sourceTime < MIN_SUBTITLE_SECONDS) return
+      const sticker: Sticker = {
+        id: crypto.randomUUID(),
+        kind,
+        start: sourceTime,
+        end,
+        // 자막(아래 가운데)과 겹치지 않게 오른쪽 위에 둔다.
+        x: 0.75,
+        y: 0.3,
+        size: DEFAULT_STICKER_SIZE,
+      }
+      commit(
+        get().timeline.map((item) =>
+          item.id === segment.item.id
+            ? { ...item, stickers: [...(item.stickers ?? []), sticker] }
+            : item,
+        ),
+      )
+    },
+
+    updateSticker: (clipId, id, patch) => {
+      commit(
+        get().timeline.map((item) =>
+          item.id === clipId
+            ? {
+                ...item,
+                stickers: (item.stickers ?? []).map((sticker) =>
+                  sticker.id === id ? { ...sticker, ...patch } : sticker,
+                ),
+              }
+            : item,
+        ),
+      )
+    },
+
+    removeOverlay: (clipId, id) => {
+      commit(
+        get().timeline.map((item) =>
+          item.id === clipId
+            ? {
+                ...item,
+                moments: (item.moments ?? []).filter((moment) => moment.id !== id),
+                stickers: (item.stickers ?? []).filter((sticker) => sticker.id !== id),
+              }
+            : item,
+        ),
+      )
     },
 
     setColor: (id, color) => {

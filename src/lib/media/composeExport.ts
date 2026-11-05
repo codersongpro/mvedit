@@ -22,6 +22,8 @@ import { isAudioOnly, usesSourceTime } from '../project/types'
 import type { ExportSetting, Subtitle, SubtitleStyle, TimelineItem } from '../project/types'
 import { computeOutputSize, resolveVideoBitrate, AUDIO_BITRATE } from './outputSize'
 import { drawSubtitle } from './drawSubtitle'
+import { applyMatrix, filterMatrix, sceneFxAt, type SceneFx } from './visualFx'
+import { drawStickers, stickersAt } from './stickers'
 import { toTimedSubtitles } from './srt'
 import { ExportError, toExportError } from './export'
 import type { ExportCodecProfile } from './exportTypes'
@@ -124,7 +126,11 @@ export async function composeTimeline(
     // 워커에는 document 가 없다. 화면에 붙지 않는 캔버스를 쓴다.
     const canvas = new OffscreenCanvas(width, height)
     const context = canvas.getContext('2d', { alpha: false })
-    if (!context) throw new ExportError('unknown', '캔버스를 만들 수 없습니다.')
+    // 장면은 따로 그린 뒤 필터·줌·전환을 걸어 결과 캔버스로 옮긴다 (FR-047).
+    // 한 캔버스에 바로 그리면 흐린 배경과 본 화면이 따로 그려져 효과가 둘에 따로 걸린다.
+    const scene = new OffscreenCanvas(width, height)
+    const sceneContext = scene.getContext('2d', { alpha: false })
+    if (!context || !sceneContext) throw new ExportError('unknown', '캔버스를 만들 수 없습니다.')
 
     const blur = input.setting.fitMode === 'blur' ? createBlurLayer(width, height) : null
 
@@ -160,8 +166,9 @@ export async function composeTimeline(
         segment,
         input,
         openInput,
-        canvas,
-        context,
+        canvas: scene,
+        context: sceneContext,
+        out: { canvas, context },
         blur,
         videoSource,
         audioSource,
@@ -240,8 +247,11 @@ interface AudioRenderContext {
 }
 
 interface RenderContext extends AudioRenderContext {
+  /** 장면(원본 화면)을 그리는 곳 */
   canvas: OffscreenCanvas
   context: OffscreenCanvasRenderingContext2D
+  /** 효과를 거쳐 인코더로 가는 결과 캔버스 */
+  out: { canvas: OffscreenCanvas; context: OffscreenCanvasRenderingContext2D }
   /** '흐린 배경 채우기'일 때만 있다 */
   blur: BlurLayer | null
   videoSource: CanvasSource
@@ -477,10 +487,10 @@ function drawWithFit(
 }
 
 /**
- * 그 시점의 자막과 페이드를 프레임에 새긴다.
+ * 장면에 효과를 걸어 결과 캔버스로 옮기고, 스티커·자막·덮개를 얹는다.
  *
- * 페이드는 자막까지 덮도록 맨 마지막에 검정을 얹는다. 화면만 어두워지고
- * 자막이 또렷이 남으면 페이드가 어색해 보인다.
+ * 순서는 장면 → 스티커 → 자막 → 덮개(페이드·번쩍)다. 덮개는 자막까지 덮는다.
+ * 화면만 어두워지고 자막이 또렷이 남으면 페이드가 어색해 보인다.
  */
 function paintOverlays(
   ctx: RenderContext,
@@ -488,22 +498,82 @@ function paintOverlays(
   sourceTime: number,
   clipOffset: number,
 ): void {
+  const fx = sceneFxAt(segment.item, clipOffset)
+  compositeScene(ctx, fx)
+
+  const out = ctx.out
+  // 스티커는 줌·흔들림 밖에 둔다. 장면과 함께 흔들리면 가리키던 곳을 놓친다.
+  drawStickers(
+    out.context,
+    stickersAt(segment.item, sourceTime),
+    out.canvas.width,
+    out.canvas.height,
+  )
   const subtitle = subtitleAt(ctx.input.subtitles, segment.item, sourceTime)
   if (subtitle) {
     drawSubtitle(
-      ctx.context,
+      out.context,
       subtitle,
       ctx.input.subtitleStyle,
-      ctx.canvas.width,
-      ctx.canvas.height,
+      out.canvas.width,
+      out.canvas.height,
       sourceTime,
     )
   }
 
-  const factor = fadeFactor(segment.item, clipOffset)
-  if (factor < 1) {
-    ctx.context.fillStyle = `rgba(0, 0, 0, ${1 - factor})`
-    ctx.context.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  if (fx.overlay && fx.overlayAlpha > 0) {
+    out.context.save()
+    out.context.globalAlpha = Math.min(1, fx.overlayAlpha)
+    out.context.fillStyle = fx.overlay
+    out.context.fillRect(0, 0, out.canvas.width, out.canvas.height)
+    out.context.restore()
+  }
+}
+
+/**
+ * 캔버스 filter 를 받는 브라우저인가. 사파리는 오랫동안 받지 않았다.
+ * 못 받으면 같은 필터를 색 행렬로 픽셀에 직접 건다.
+ */
+const CANVAS_FILTER = (() => {
+  try {
+    const probe = new OffscreenCanvas(1, 1).getContext('2d')
+    if (!probe) return false
+    probe.filter = 'grayscale(1)'
+    return probe.filter === 'grayscale(1)'
+  } catch {
+    return false
+  }
+})()
+
+/** 장면을 줌·이동·필터를 거쳐 결과 캔버스로 옮긴다. 효과가 없으면 그대로 베낀다. */
+function compositeScene(ctx: RenderContext, fx: SceneFx): void {
+  const { canvas: target, context: out } = ctx.out
+  const width = target.width
+  const height = target.height
+
+  out.fillStyle = '#000000'
+  out.fillRect(0, 0, width, height)
+  out.save()
+  out.translate(width / 2 + fx.translateX * width, height / 2 + fx.translateY * height)
+  out.scale(fx.scale, fx.scale)
+  out.translate(-width / 2, -height / 2)
+  if (CANVAS_FILTER) {
+    const filters = [
+      fx.filter === 'none' ? '' : fx.filter,
+      fx.blur > 0 ? `blur(${fx.blur * height}px)` : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+    if (filters) out.filter = filters
+  }
+  out.drawImage(ctx.canvas, 0, 0)
+  out.restore()
+
+  const matrix = CANVAS_FILTER ? null : filterMatrix(ctx.segment.item.filter)
+  if (matrix) {
+    const image = out.getImageData(0, 0, width, height)
+    applyMatrix(image.data, matrix)
+    out.putImageData(image, 0, 0)
   }
 }
 

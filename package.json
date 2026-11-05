@@ -15,7 +15,7 @@
     "test:preview": "node tests/preview.e2e.mjs",
     "test:subtitle": "node tests/subtitle.e2e.mjs",
     "test:compose": "node tests/compose.e2e.mjs",
-    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:preview && npm run test:subtitle && npm run test:autocaption && npm run test:template && npm run test:subtitlefx && npm run test:project && npm run test:mobile && npm run test:offline && npm run test:perf && npm run test:compose && npm run test:audiofade && npm run test:e2e",
+    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:preview && npm run test:subtitle && npm run test:autocaption && npm run test:template && npm run test:subtitlefx && npm run test:visualfx && npm run test:stickerfx && npm run test:project && npm run test:mobile && npm run test:offline && npm run test:perf && npm run test:compose && npm run test:audiofade && npm run test:e2e",
     "test:project": "node tests/project.e2e.mjs",
     "test:mobile": "node tests/mobile.e2e.mjs",
     "icons": "node scripts/make-icons.mjs",
@@ -24,7 +24,9 @@
     "test:audiofade": "node tests/audiofade.e2e.mjs",
     "test:autocaption": "node tests/autocaption.e2e.mjs",
     "test:template": "node tests/template.e2e.mjs",
-    "test:subtitlefx": "node tests/subtitlefx.e2e.mjs"
+    "test:subtitlefx": "node tests/subtitlefx.e2e.mjs",
+    "test:visualfx": "node tests/visualfx.e2e.mjs",
+    "test:stickerfx": "node tests/stickerfx.e2e.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",

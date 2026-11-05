@@ -13,6 +13,7 @@ import { StorageNotice } from './components/StorageNotice'
 import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
 import { TemplatePicker } from './components/TemplatePicker'
+import { EffectsPanel } from './components/EffectsPanel'
 import { isAudioOnly } from './lib/project/types'
 import { useProject } from './lib/project/store'
 import { persistSources, useAutosave } from './lib/project/persist'
@@ -291,6 +292,13 @@ export default function App() {
           <section className="flex flex-col gap-3">
             <h2 className={sectionTitle}>템플릿</h2>
             <TemplatePicker />
+          </section>
+        )}
+
+        {timeline.length > 0 && !audioOnlyTimeline && (
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionTitle}>효과</h2>
+            <EffectsPanel />
           </section>
         )}
 

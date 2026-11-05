@@ -3,6 +3,18 @@ import { findSource, useProject } from '../lib/project/store'
 import { fadeFactor, segmentAt, sourceTimeAt, toSegments } from '../lib/project/playback'
 import { subtitleAt } from '../lib/project/subtitles'
 import { SubtitleOverlay } from './SubtitleOverlay'
+import { StickerLayer } from './StickerLayer'
+import { sceneFxAt, type SceneFx } from '../lib/media/visualFx'
+
+const NO_FX: SceneFx = {
+  filter: 'none',
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+  blur: 0,
+  overlay: null,
+  overlayAlpha: 0,
+}
 import { timelineDuration, usesSourceTime } from '../lib/project/types'
 import { computeOutputSize } from '../lib/media/outputSize'
 import { useIsMobile } from '../lib/useIsMobile'
@@ -36,6 +48,7 @@ export function Preview() {
   const togglePlay = useProject((state) => state.togglePlay)
   const addSubtitle = useProject((state) => state.addSubtitle)
   const updateSubtitle = useProject((state) => state.updateSubtitle)
+  const updateSticker = useProject((state) => state.updateSticker)
 
   const subtitles = useProject((state) => state.subtitles)
   const subtitleStyle = useProject((state) => state.subtitleStyle)
@@ -48,6 +61,7 @@ export function Preview() {
   const currentSource = findSource(sources, current?.item.sourceId ?? null)
   // 페이드는 화면과 소리에 같은 배율을 쓴다. 내보내기와 같은 곡선이다.
   const fade = current ? fadeFactor(current.item, playhead - current.start) : 1
+  const fx = current ? sceneFxAt(current.item, playhead - current.start) : NO_FX
   const currentSubtitle = current
     ? subtitleAt(subtitles, current.item, sourceTimeAt(current, playhead))
     : null
@@ -311,65 +325,97 @@ export function Preview() {
         }}
         className="relative mx-auto w-full overflow-hidden rounded-m3-lg bg-black"
       >
-        {blurred && (
-          <canvas
-            ref={backdropRef}
-            data-testid="preview-backdrop"
-            width={64}
-            height={Math.max(16, Math.round((64 * outputSize.height) / outputSize.width))}
-            aria-hidden
-            className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl"
-          />
-        )}
-
-        {sources
-          // 음원도 video 요소로 재생한다. 소리만 있는 파일도 재생·탐색이 같고,
-          // 요소를 하나로 통일하면 클립 전환 코드가 갈라지지 않는다.
-          .filter((source) => source.kind !== 'image')
-          .map((source) => (
-            <video
-              key={source.id}
-              ref={(element) => {
-                if (element) videoRefs.current.set(source.id, element)
-                else videoRefs.current.delete(source.id)
-              }}
-              src={objectUrls.get(source.id)}
-              preload="auto"
-              playsInline
-              // 탐색은 비동기라 재생헤드를 옮긴 직후에 그리면 이전 장면이 남는다.
-              onSeeked={blurred ? paintBackdrop : undefined}
-              // 내보내기에서 고른 맞추는 방법을 그대로 쓴다.
-              className={`absolute inset-0 h-full w-full ${fitClass} ${
-                current?.item.sourceId === source.id && kind === 'video' ? '' : 'hidden'
-              }`}
+        {/* 장면 전체에 필터·줌·전환을 건다. 자막은 효과 밖에 둔다 — 내보내기와 같은 순서 (FR-047). */}
+        <div
+          data-testid="preview-scene"
+          data-filter={current?.item.filter ?? 'none'}
+          className="absolute inset-0"
+          style={{
+            transform:
+              fx.scale !== 1 || fx.translateX !== 0 || fx.translateY !== 0
+                ? `translate(${fx.translateX * 100}%, ${fx.translateY * 100}%) scale(${fx.scale})`
+                : undefined,
+            filter:
+              [
+                fx.filter === 'none' ? '' : fx.filter,
+                fx.blur > 0 ? `blur(${fx.blur * 100}cqh)` : '',
+              ]
+                .filter(Boolean)
+                .join(' ') || undefined,
+          }}
+        >
+          {blurred && (
+            <canvas
+              ref={backdropRef}
+              data-testid="preview-backdrop"
+              width={64}
+              height={Math.max(16, Math.round((64 * outputSize.height) / outputSize.width))}
+              aria-hidden
+              className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl"
             />
-          ))}
+          )}
 
-        {kind === 'image' && currentSource && (
-          <img
-            ref={imageRef}
-            src={objectUrls.get(currentSource.id)}
-            alt=""
-            onLoad={paintBackdrop}
-            className={`absolute inset-0 h-full w-full ${fitClass}`}
-          />
-        )}
+          {sources
+            // 음원도 video 요소로 재생한다. 소리만 있는 파일도 재생·탐색이 같고,
+            // 요소를 하나로 통일하면 클립 전환 코드가 갈라지지 않는다.
+            .filter((source) => source.kind !== 'image')
+            .map((source) => (
+              <video
+                key={source.id}
+                ref={(element) => {
+                  if (element) videoRefs.current.set(source.id, element)
+                  else videoRefs.current.delete(source.id)
+                }}
+                src={objectUrls.get(source.id)}
+                preload="auto"
+                playsInline
+                // 탐색은 비동기라 재생헤드를 옮긴 직후에 그리면 이전 장면이 남는다.
+                onSeeked={blurred ? paintBackdrop : undefined}
+                // 내보내기에서 고른 맞추는 방법을 그대로 쓴다.
+                className={`absolute inset-0 h-full w-full ${fitClass} ${
+                  current?.item.sourceId === source.id && kind === 'video' ? '' : 'hidden'
+                }`}
+              />
+            ))}
 
-        {kind === 'audio' && (
-          <div
-            data-testid="preview-audio"
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant"
-          >
-            <MusicNoteIcon size={56} />
-            <span className="m3-label-large">{currentSource?.fileName}</span>
-          </div>
-        )}
+          {kind === 'image' && currentSource && (
+            <img
+              ref={imageRef}
+              src={objectUrls.get(currentSource.id)}
+              alt=""
+              onLoad={paintBackdrop}
+              className={`absolute inset-0 h-full w-full ${fitClass}`}
+            />
+          )}
 
-        {kind === 'blank' && (
-          <div
-            data-testid="preview-blank"
-            className="absolute inset-0"
-            style={{ backgroundColor: current?.item.color }}
+          {kind === 'audio' && (
+            <div
+              data-testid="preview-audio"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant"
+            >
+              <MusicNoteIcon size={56} />
+              <span className="m3-label-large">{currentSource?.fileName}</span>
+            </div>
+          )}
+
+          {kind === 'blank' && (
+            <div
+              data-testid="preview-blank"
+              className="absolute inset-0"
+              style={{ backgroundColor: current?.item.color }}
+            />
+          )}
+        </div>
+
+        {current && (
+          <StickerLayer
+            item={current.item}
+            sourceTime={sourceTimeAt(current, playhead)}
+            onMove={
+              playing
+                ? undefined
+                : (sticker, position) => updateSticker(current.item.id, sticker.id, position)
+            }
           />
         )}
 
@@ -391,12 +437,12 @@ export function Preview() {
         )}
 
         {/* 페이드는 자막까지 덮는다. 내보내기 결과와 같게 보이려는 것. */}
-        {fade < 1 && (
+        {fx.overlay && fx.overlayAlpha > 0 && (
           <div
             data-testid="preview-fade"
             aria-hidden
-            className="pointer-events-none absolute inset-0 bg-black"
-            style={{ opacity: 1 - fade }}
+            className="pointer-events-none absolute inset-0"
+            style={{ backgroundColor: fx.overlay, opacity: Math.min(1, fx.overlayAlpha) }}
           />
         )}
       </div>
