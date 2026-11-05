@@ -4,6 +4,7 @@ import type {
   MediaSource,
   RejectedFile,
   Subtitle,
+  SubtitleEffect,
   SubtitleStyle,
   TimelineItem,
 } from './types'
@@ -92,7 +93,12 @@ interface ProjectState {
   trim: (id: string, edge: TrimEdge, offsetInClip: number) => void
 
   addSubtitle: (text?: string) => void
-  updateSubtitle: (id: string, patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end'>>) => void
+  updateSubtitle: (
+    id: string,
+    patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end' | 'effect'>>,
+  ) => void
+  /** 한 자막의 꾸미기를 모든 자막에 똑같이. 위치는 자막마다 다르므로 옮기지 않는다. */
+  applyEffectToAll: (effect: SubtitleEffect) => void
   removeSubtitle: (id: string) => void
   /** 자동 자막 결과를 넣는다. replace 면 해당 클립의 기존 자막을 먼저 지운다. */
   applyAutoSubtitles: (
@@ -380,6 +386,21 @@ export const useProject = create<ProjectState>((set, get) => {
       if (patch.text !== undefined && patch.text !== subtitles[index].text) delete merged.words
       next[index] = normalizeSubtitle(merged, item)
       commit(timeline, next)
+    },
+
+    applyEffectToAll: (effect) => {
+      const { timeline, subtitles } = get()
+      const { position: _ignored, ...shared } = effect
+      commit(
+        timeline,
+        subtitles.map((subtitle) => ({
+          ...subtitle,
+          effect: {
+            ...shared,
+            ...(subtitle.effect?.position && { position: subtitle.effect.position }),
+          },
+        })),
+      )
     },
 
     applyAutoSubtitles: (results, mode) => {

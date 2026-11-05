@@ -373,7 +373,22 @@ export function Preview() {
           />
         )}
 
-        {currentSubtitle && <SubtitleOverlay text={currentSubtitle.text} style={subtitleStyle} />}
+        {currentSubtitle && current && (
+          <SubtitleOverlay
+            subtitle={currentSubtitle}
+            style={subtitleStyle}
+            time={sourceTimeAt(current, playhead)}
+            // 재생 중에는 자막이 계속 바뀌어 잡을 수 없으니 멈췄을 때만 옮긴다.
+            onMove={
+              playing
+                ? undefined
+                : (position) =>
+                    updateSubtitle(currentSubtitle.id, {
+                      effect: { ...currentSubtitle.effect, position },
+                    })
+            }
+          />
+        )}
 
         {/* 페이드는 자막까지 덮는다. 내보내기 결과와 같게 보이려는 것. */}
         {fade < 1 && (

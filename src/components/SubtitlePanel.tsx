@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useProject } from '../lib/project/store'
 import { toSegments } from '../lib/project/playback'
 import { clipRange } from '../lib/project/subtitles'
@@ -7,6 +7,7 @@ import { formatClock } from '../lib/format'
 import { DeleteIcon, ExpandMoreIcon } from './icons'
 import { Chip, Row, Segmented, TextField, btn } from './m3'
 import { AutoCaption } from './AutoCaption'
+import { SubtitleEffectEditor } from './SubtitleEffectEditor'
 
 const FONT_SIZES = [
   { value: 0.035, label: '작게' },
@@ -38,6 +39,8 @@ export function SubtitlePanel() {
   const selectedId = useProject((state) => state.selectedSubtitleId)
 
   const segments = useMemo(() => toSegments(timeline), [timeline])
+  /** 꾸미기 칸은 한 번에 하나만 연다. 여러 개 열면 목록이 끝없이 길어진다. */
+  const [decorating, setDecorating] = useState<string | null>(null)
 
   /** 자막이 타임라인 어디쯤에 놓이는지 계산해 재생 순서로 정렬한다. */
   const rows = useMemo(() => {
@@ -123,6 +126,25 @@ export function SubtitlePanel() {
                 />
                 <button
                   type="button"
+                  data-testid="subtitle-decorate"
+                  aria-expanded={decorating === subtitle.id}
+                  onClick={() => {
+                    setDecorating(decorating === subtitle.id ? null : subtitle.id)
+                    // 꾸미는 자막이 미리보기에 보여야 바뀌는 모습을 확인할 수 있다.
+                    setPlayhead(timelineStart)
+                  }}
+                  className={`${btn.text} h-11 ${
+                    subtitle.effect?.preset ||
+                    subtitle.effect?.animation ||
+                    subtitle.effect?.highlight
+                      ? 'text-primary'
+                      : ''
+                  }`}
+                >
+                  꾸미기
+                </button>
+                <button
+                  type="button"
                   data-testid="subtitle-remove"
                   aria-label="자막 지우기"
                   onClick={() => removeSubtitle(subtitle.id)}
@@ -131,6 +153,7 @@ export function SubtitlePanel() {
                 >
                   <DeleteIcon size={24} />
                 </button>
+                {decorating === subtitle.id && <SubtitleEffectEditor subtitle={subtitle} />}
                 {hidden && (
                   <span className="w-full m3-body-small text-on-surface-variant">
                     클립을 잘라내 지금은 보이지 않습니다. 되돌리면 다시 나타납니다.

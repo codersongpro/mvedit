@@ -221,3 +221,40 @@ export async function inspectAudioFile({ bundleSource, bytes, mimeType }) {
   URL.revokeObjectURL(url)
   return result
 }
+
+/**
+ * 시각별로 화면의 위·아래 절반에서 주어진 색에 가까운 픽셀 수를 센다.
+ * 특수자막(강조색·위치)이 결과물에 그대로 새겨졌는지 보려는 것.
+ */
+export async function countColor({ bundleSource, bytes, mimeType, times, color, tolerance = 60 }) {
+  const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
+  const mb = await import(/* @vite-ignore */ url)
+  const blob = new Blob([new Uint8Array(bytes)], { type: mimeType })
+  const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS })
+  const sink = new mb.VideoSampleSink(await input.getPrimaryVideoTrack())
+
+  const result = []
+  for (const time of times) {
+    const sample = await sink.getSample(time)
+    const canvas = document.createElement('canvas')
+    canvas.width = sample.displayWidth
+    canvas.height = sample.displayHeight
+    const ctx = canvas.getContext('2d')
+    sample.draw(ctx, 0, 0)
+    sample.close()
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    let top = 0
+    let bottom = 0
+    for (let i = 0; i < data.length; i += 4) {
+      const distance =
+        Math.abs(data[i] - color[0]) + Math.abs(data[i + 1] - color[1]) + Math.abs(data[i + 2] - color[2])
+      if (distance > tolerance) continue
+      if (i / 4 / canvas.width < canvas.height / 2) top += 1
+      else bottom += 1
+    }
+    result.push({ time, top, bottom })
+  }
+  input.dispose()
+  URL.revokeObjectURL(url)
+  return result
+}

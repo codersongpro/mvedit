@@ -492,10 +492,11 @@ function paintOverlays(
   if (subtitle) {
     drawSubtitle(
       ctx.context,
-      subtitle.text,
+      subtitle,
       ctx.input.subtitleStyle,
       ctx.canvas.width,
       ctx.canvas.height,
+      sourceTime,
     )
   }
 

@@ -110,6 +110,23 @@ export interface Subtitle {
    * 사람이 글자를 고치면 단어와 시각이 더는 맞지 않으므로 지운다.
    */
   words?: SubtitleWord[]
+  /** 이 자막만의 꾸미기(FR-046). 없으면 프로젝트 자막 모양 그대로 */
+  effect?: SubtitleEffect
+}
+
+export type SubtitlePreset = 'basic' | 'variety' | 'neon' | 'news' | 'bubble'
+export type SubtitleAnimation = 'none' | 'fade' | 'pop' | 'slide' | 'typing'
+
+export interface SubtitleEffect {
+  preset?: SubtitlePreset
+  animation?: SubtitleAnimation
+  /** 말하는 단어만 강조색으로 */
+  highlight?: boolean
+  /**
+   * 화면 속 위치. x 는 가운데의 가로 비율, y 는 아래에서부터의 비율.
+   * 없으면 프로젝트 자막 모양의 세로 위치에 가운데 정렬.
+   */
+  position?: { x: number; y: number }
 }
 
 export interface SubtitleWord {
