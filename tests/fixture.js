@@ -13,14 +13,18 @@ export async function buildFixture({
   fps,
   rotation = 0,
   pattern = 'plain',
+  // 0 이면 무음. 자동 자막이 조용한 구간을 걸러 내는지 볼 때 쓴다.
+  audioAmplitude = 0.25,
 }) {
   const url = URL.createObjectURL(new Blob([bundleSource], { type: 'text/javascript' }))
   const mb = await import(/* @vite-ignore */ url)
 
   // 컨테이너 Chromium은 H.264·AAC 인코딩이 없으므로 가능한 조합을 고른다.
-  const videoCodec = (await mb.canEncodeVideo('avc')) ? 'avc' : 'vp9'
-  const audioCodec = (await mb.canEncodeAudio('aac')) ? 'aac' : 'opus'
-  const isMp4 = videoCodec === 'avc' && audioCodec === 'aac'
+  // 둘 중 하나만 되는 브라우저가 있다(H.264 는 되고 AAC 는 안 되는 경우).
+  // WebM 에는 H.264 를 못 담으므로 둘 다 될 때만 MP4 로 간다.
+  const isMp4 = (await mb.canEncodeVideo('avc')) && (await mb.canEncodeAudio('aac'))
+  const videoCodec = isMp4 ? 'avc' : 'vp9'
+  const audioCodec = isMp4 ? 'aac' : 'opus'
 
   const output = new mb.Output({
     format: isMp4 ? new mb.Mp4OutputFormat() : new mb.WebMOutputFormat(),
@@ -77,7 +81,7 @@ export async function buildFixture({
   const buffer = audioCtx.createBuffer(1, Math.round(sampleRate * durationSec), sampleRate)
   const channel = buffer.getChannelData(0)
   for (let i = 0; i < channel.length; i += 1) {
-    channel[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.25
+    channel[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * audioAmplitude
   }
   await audioSource.add(buffer)
   audioSource.close()

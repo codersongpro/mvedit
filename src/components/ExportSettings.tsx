@@ -7,6 +7,7 @@ import {
   estimateFileSize,
   fitResolution,
   floorFileSize,
+  shortSide,
 } from '../lib/media/outputSize'
 import {
   timelineDuration,
@@ -76,7 +77,8 @@ export function ExportSettings() {
   // 480p 보다 작은 원본은 목록에 맞는 선택지가 없어 무조건 커진다. 그때
   // 경고를 띄우면 앱이 자기 기본값을 탓하는 셈이라, 낮출 수 있을 때만 알린다.
   const upscaling =
-    size.height > sourceSize.height && setting.resolution > fitResolution(sourceSize.height)
+    shortSide(size) > shortSide(sourceSize) &&
+    setting.resolution > fitResolution(shortSide(sourceSize))
 
   // 목표가 최소 화질로 낼 수 있는 용량보다 작으면 어떻게 해도 못 맞춘다.
   // 내보내기를 돌려 실패를 보여 주기 전에 미리 알린다 (FR-019).
@@ -211,7 +213,7 @@ export function ExportSettings() {
       {upscaling && (
         <p data-testid="upscale-warning" className={notice.warn}>
           원본({sourceSize.height}p)보다 크게 내보내도 화질은 좋아지지 않고 용량만 커집니다.{' '}
-          {fitResolution(sourceSize.height)}p를 권합니다.
+          {fitResolution(shortSide(sourceSize))}p를 권합니다.
         </p>
       )}
     </div>

@@ -26,11 +26,13 @@ function even(value: number): number {
 /**
  * 출력 크기를 정한다 (FR-014, FR-016).
  *
- * 세로 해상도를 설정에서 가져오고, 가로는 화면비에서 계산한다.
+ * 해상도는 **짧은 변**의 길이다. 가로 영상은 세로가, 세로 영상은 가로가 된다.
+ * 쇼츠·릴스의 "1080p"는 1080×1920 이다. 세로 높이로 잡으면 9:16 이 608×1080 이
+ * 되어 같은 1080p 를 골라도 가로 영상보다 화질이 눈에 띄게 떨어진다.
  * '원본 유지'는 첫 영상의 비율을 그대로 쓴다.
  */
 export function computeOutputSize(setting: ExportSetting, source: Size): Size {
-  const height = setting.resolution
+  const short = setting.resolution
   const ratio =
     setting.aspectRatio === '16:9'
       ? 16 / 9
@@ -42,7 +44,9 @@ export function computeOutputSize(setting: ExportSetting, source: Size): Size {
             ? source.width / source.height
             : 16 / 9
 
-  return { width: even(height * ratio), height: even(height) }
+  return ratio >= 1
+    ? { width: even(short * ratio), height: even(short) }
+    : { width: even(short), height: even(short / ratio) }
 }
 
 /**
@@ -52,8 +56,13 @@ export function computeOutputSize(setting: ExportSetting, source: Size): Size {
  * 커진다. 설정을 건드리지 않는 사용자가 가장 많으므로 기본값이 원본을
  * 따라가야 한다. 목록의 최솟값이 480p 이므로 그보다 작은 원본은 480p 가 된다.
  */
-export function fitResolution(sourceHeight: number): Resolution {
-  return RESOLUTIONS.find((resolution) => resolution <= sourceHeight) ?? 480
+export function fitResolution(sourceShortSide: number): Resolution {
+  return RESOLUTIONS.find((resolution) => resolution <= sourceShortSide) ?? 480
+}
+
+/** 해상도 비교는 짧은 변끼리 한다 (computeOutputSize 참고). */
+export function shortSide(size: Size): number {
+  return Math.min(size.width, size.height)
 }
 
 /** 너무 낮으면 화면이 뭉개지고, 너무 높으면 용량만 커진다. */

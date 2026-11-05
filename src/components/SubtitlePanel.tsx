@@ -6,6 +6,7 @@ import { MAX_SUBTITLE_LENGTH, type Subtitle } from '../lib/project/types'
 import { formatClock } from '../lib/format'
 import { DeleteIcon, ExpandMoreIcon } from './icons'
 import { Chip, Row, Segmented, TextField, btn } from './m3'
+import { AutoCaption } from './AutoCaption'
 
 const FONT_SIZES = [
   { value: 0.035, label: '작게' },
@@ -61,6 +62,7 @@ export function SubtitlePanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <AutoCaption />
       <div className="flex flex-wrap items-center gap-2">
         <span className="mx-1 m3-label-large text-on-surface">자막 {rows.length}개</span>
         <span className="m3-body-small text-on-surface-variant">

@@ -65,8 +65,21 @@ export function splitSubtitles(
     } else if (subtitle.start >= cut) {
       result.push({ ...subtitle, clipId: rightId })
     } else {
-      result.push({ ...subtitle, clipId: leftId, end: cut })
-      result.push({ ...subtitle, id: crypto.randomUUID(), clipId: rightId, start: cut })
+      // 단어는 시작 시각 기준으로 한쪽에만 둔다. 양쪽에 두면 경계 단어가 두 번 빛난다.
+      const words = subtitle.words
+      result.push({
+        ...subtitle,
+        clipId: leftId,
+        end: cut,
+        ...(words && { words: words.filter((word) => word.start < cut) }),
+      })
+      result.push({
+        ...subtitle,
+        id: crypto.randomUUID(),
+        clipId: rightId,
+        start: cut,
+        ...(words && { words: words.filter((word) => word.start >= cut) }),
+      })
     }
   }
 

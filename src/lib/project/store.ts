@@ -15,7 +15,7 @@ import {
   timelineDuration,
 } from './types'
 import type { ProjectFile } from './file'
-import { fitResolution } from '../media/outputSize'
+import { fitResolution, shortSide } from '../media/outputSize'
 import { segmentAt, sourceTimeAt, toSegments } from './playback'
 import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
 import {
@@ -94,6 +94,11 @@ interface ProjectState {
   addSubtitle: (text?: string) => void
   updateSubtitle: (id: string, patch: Partial<Pick<Subtitle, 'text' | 'start' | 'end'>>) => void
   removeSubtitle: (id: string) => void
+  /** 자동 자막 결과를 넣는다. replace 면 해당 클립의 기존 자막을 먼저 지운다. */
+  applyAutoSubtitles: (
+    results: { clipId: string; lines: Omit<Subtitle, 'id' | 'clipId'>[] }[],
+    mode: 'replace' | 'append',
+  ) => void
   setSubtitleStyle: (patch: Partial<SubtitleStyle>) => void
   setExportSetting: (patch: Partial<ExportSetting>) => void
 
@@ -162,7 +167,9 @@ function defaultSettingFor(
   if (!first) return state.exportSetting
   return {
     ...state.exportSetting,
-    resolution: fitResolution(first.displayHeight),
+    resolution: fitResolution(
+      shortSide({ width: first.displayWidth, height: first.displayHeight }),
+    ),
   }
 }
 
@@ -369,8 +376,31 @@ export const useProject = create<ProjectState>((set, get) => {
       if (!item) return
 
       const next = [...subtitles]
-      next[index] = normalizeSubtitle({ ...subtitles[index], ...patch }, item)
+      const merged = { ...subtitles[index], ...patch }
+      if (patch.text !== undefined && patch.text !== subtitles[index].text) delete merged.words
+      next[index] = normalizeSubtitle(merged, item)
       commit(timeline, next)
+    },
+
+    applyAutoSubtitles: (results, mode) => {
+      const { timeline, subtitles } = get()
+      const items = new Map(timeline.map((item) => [item.id, item]))
+      const touched = new Set(results.map((result) => result.clipId))
+      const kept =
+        mode === 'replace'
+          ? subtitles.filter((subtitle) => !touched.has(subtitle.clipId))
+          : subtitles
+      const created: Subtitle[] = []
+      for (const { clipId, lines } of results) {
+        const item = items.get(clipId)
+        // 인식하는 동안 클립이 지워졌으면 결과도 버린다.
+        if (!item) continue
+        for (const line of lines) {
+          created.push(normalizeSubtitle({ ...line, id: crypto.randomUUID(), clipId }, item))
+        }
+      }
+      // 클립 여러 개를 한 번에 처리해도 되돌리기 한 번으로 통째로 돌아가야 한다.
+      commit(timeline, [...kept, ...created])
     },
 
     removeSubtitle: (id) => {

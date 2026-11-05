@@ -12,6 +12,8 @@ import { RelinkPanel } from './components/RelinkPanel'
 import { StorageNotice } from './components/StorageNotice'
 import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
+import { TemplatePicker } from './components/TemplatePicker'
+import { isAudioOnly } from './lib/project/types'
 import { useProject } from './lib/project/store'
 import { persistSources, useAutosave } from './lib/project/persist'
 import {
@@ -34,6 +36,8 @@ export default function App() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
 
   const timeline = useProject((state) => state.timeline)
+  // 음원만 있으면 화면이 없어 템플릿(화면비·자막)이 의미가 없다.
+  const audioOnlyTimeline = isAudioOnly(timeline)
   const rejected = useProject((state) => state.rejected)
   const importing = useProject((state) => state.importing)
   const addImported = useProject((state) => state.addImported)
@@ -282,6 +286,13 @@ export default function App() {
           {timeline.length > 0 && <ClipInspector />}
           <HelpPanel />
         </section>
+
+        {timeline.length > 0 && !audioOnlyTimeline && (
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionTitle}>템플릿</h2>
+            <TemplatePicker />
+          </section>
+        )}
 
         {timeline.length > 0 && (
           <section className="flex flex-col gap-3">

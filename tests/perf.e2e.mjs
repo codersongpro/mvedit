@@ -87,13 +87,20 @@ try {
     entry < FIRST_PAINT_JS_BUDGET,
     `${(entry / 1024).toFixed(0)} KB / 예산 ${FIRST_PAINT_JS_BUDGET / 1024} KB`,
   )
+  // 미디어 라이브러리는 불러오기와 자동 자막이 함께 쓰므로 번들러가 공용 조각으로
+  // 떼어 낸다. 이름 대신 "첫 화면 밖에 있는 큰 조각"인지로 본다.
   const lazy = Object.entries(sizes).filter(
-    ([name]) => name.startsWith('import-') || name.startsWith('export.worker-'),
+    ([name]) =>
+      name.endsWith('.js') && !name.startsWith('index-') && !name.endsWith('.worker.js'),
   )
+  const worker = Object.entries(sizes).find(([name]) => name.startsWith('export.worker-'))
+  const lazyLibrary = lazy
+    .filter(([name]) => !name.includes('.worker-'))
+    .reduce((sum, [, size]) => sum + size, 0)
   check(
     '무거운 인코딩 코드는 따로 떨어져 있다',
-    lazy.length >= 2 && lazy.every(([, size]) => size > 100 * 1024),
-    lazy.map(([name, size]) => `${name.split('-')[0]} ${(size / 1024).toFixed(0)}KB`).join(', '),
+    worker !== undefined && worker[1] > 100 * 1024 && lazyLibrary > 100 * 1024,
+    `export.worker ${((worker?.[1] ?? 0) / 1024).toFixed(0)}KB, 지연 로딩 라이브러리 ${(lazyLibrary / 1024).toFixed(0)}KB`,
   )
 
   // ---------- 클립 100개 부하 ----------

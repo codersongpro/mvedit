@@ -105,6 +105,17 @@ export interface Subtitle {
   start: number
   end: number
   text: string
+  /**
+   * 자동 자막만 갖는 단어별 시각(원본 시간축). 단어 하이라이트의 근거다.
+   * 사람이 글자를 고치면 단어와 시각이 더는 맞지 않으므로 지운다.
+   */
+  words?: SubtitleWord[]
+}
+
+export interface SubtitleWord {
+  text: string
+  start: number
+  end: number
 }
 
 /** 프로젝트 전체에 한 벌만 둔다 (FR-036). */

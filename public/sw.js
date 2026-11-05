@@ -11,6 +11,14 @@ const VERSION = '__BUILD_ID__'
 const CACHE = `cutcap-${VERSION}`
 const PRECACHE = __PRECACHE__
 
+/**
+ * 서버가 `Vary: Origin` 을 붙이면, 미리 받을 때(Origin 없음)와 모듈 스크립트를
+ * 부를 때(Origin 있음)의 요청이 서로 다르다고 보고 캐시를 못 찾는다. 그러면
+ * 오프라인에서 첫 화면이 빈 채로 뜬다. 주소에 해시가 붙어 내용이 하나뿐이므로
+ * Vary 는 무시해도 된다.
+ */
+const MATCH = { ignoreVary: true }
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
@@ -46,7 +54,9 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE).then((cache) => cache.put('/index.html', copy))
           return response
         })
-        .catch(() => caches.match('/index.html').then((cached) => cached ?? Response.error())),
+        .catch(() =>
+          caches.match('/index.html', MATCH).then((cached) => cached ?? Response.error()),
+        ),
     )
     return
   }
@@ -54,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   // 코드와 그림은 이름에 해시가 붙어 내용이 바뀌면 주소도 바뀐다.
   // 그러니 캐시에 있으면 그대로 쓰는 것이 항상 옳다.
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.match(request, MATCH).then((cached) => {
       if (cached) return cached
       return fetch(request).then((response) => {
         if (response.ok && response.type === 'basic') {

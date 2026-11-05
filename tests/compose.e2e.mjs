@@ -357,7 +357,8 @@ try {
   await page.click('[data-testid="resolution-480"]')
 
   await page.click('[data-testid="aspect-9:16"]')
-  check('AC-016 9:16 선택 시 세로로 길어짐', (await outputSize()) === '270×480', await outputSize())
+  // 해상도는 짧은 변이다. 세로 480p 는 480×854 (쇼츠 1080p = 1080×1920 과 같은 규칙).
+  check('AC-016 9:16 선택 시 세로로 길어짐', (await outputSize()) === '480×854', await outputSize())
   await page.click('[data-testid="aspect-1:1"]')
   check('AC-016 1:1 선택 시 정사각', (await outputSize()) === '480×480', await outputSize())
   await page.click('[data-testid="aspect-16:9"]')
