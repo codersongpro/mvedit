@@ -24,6 +24,8 @@ import { computeOutputSize, resolveVideoBitrate, AUDIO_BITRATE } from './outputS
 import { drawSubtitle } from './drawSubtitle'
 import { applyMatrix, filterMatrix, sceneFxAt, type SceneFx } from './visualFx'
 import { drawStickers, stickersAt } from './stickers'
+import { DEFAULT_CAPTION_FONT, loadCaptionFonts, nearestWeight } from './captionFonts'
+import { fontOf, lookOf } from './subtitleLook'
 import { toTimedSubtitles } from './srt'
 import { ExportError, toExportError } from './export'
 import type { ExportCodecProfile } from './exportTypes'
@@ -155,6 +157,7 @@ export async function composeTimeline(
     output.addAudioTrack(audioSource)
 
     await output.start()
+    await prepareCaptionFonts(input.subtitles, input.subtitleStyle)
 
     const throwIfAborted = () => {
       if (signal?.aborted) throw new ExportError('canceled')
@@ -528,6 +531,26 @@ function paintOverlays(
     out.context.fillRect(0, 0, out.canvas.width, out.canvas.height)
     out.context.restore()
   }
+}
+
+/**
+ * 자막에 쓴 글꼴 조각을 미리 받는다 (FR-050).
+ *
+ * 워커의 글꼴 목록(self.fonts)은 문서와 따로라 여기서 다시 등록한다. 이 기능이
+ * 없는 브라우저에서는 기기 기본 고딕으로 그려진다. 내보내기를 막을 일은 아니다.
+ */
+async function prepareCaptionFonts(subtitles: Subtitle[], style: SubtitleStyle): Promise<void> {
+  const scope = globalThis as unknown as { fonts?: FontFaceSet; location?: Location }
+  if (!scope.fonts || !scope.location || subtitles.length === 0) return
+  const uses = subtitles.map((subtitle) => {
+    const id = fontOf(subtitle, style) ?? DEFAULT_CAPTION_FONT
+    return {
+      id,
+      weight: nearestWeight(id, lookOf(style, subtitle.effect?.preset).weight),
+      text: subtitle.text,
+    }
+  })
+  await loadCaptionFonts(scope.fonts, uses, scope.location.origin)
 }
 
 /**

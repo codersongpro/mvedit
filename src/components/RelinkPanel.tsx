@@ -134,6 +134,7 @@ export function RelinkPanel() {
         subtitles: project.subtitles.filter((subtitle) => keptItems.has(subtitle.clipId)),
         subtitleStyle: project.subtitleStyle,
         exportSetting: project.exportSetting,
+        look: project.look ?? null,
       })
       if (warnings.length > 0) useProject.getState().setStorageWarning(warnings.join(' '))
 

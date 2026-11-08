@@ -14,6 +14,7 @@ import { RejectedFiles } from './components/RejectedFiles'
 import { Timeline } from './components/Timeline'
 import { TemplatePicker } from './components/TemplatePicker'
 import { EffectsPanel } from './components/EffectsPanel'
+import { StartWizard } from './components/StartWizard'
 import { isAudioOnly } from './lib/project/types'
 import { useProject } from './lib/project/store'
 import { persistSources, useAutosave } from './lib/project/persist'
@@ -27,6 +28,7 @@ import {
 } from './lib/project/file'
 import { detectCapabilities, type Capabilities } from './lib/capabilities'
 import { useEditShortcuts } from './lib/useEditShortcuts'
+import { useCaptionFonts } from './lib/useCaptionFonts'
 import { useIsMobile } from './lib/useIsMobile'
 import { timelineNotices } from './lib/project/limits'
 import { CheckIcon, DownloadIcon, SettingsIcon, VideocamIcon } from './components/icons'
@@ -46,12 +48,14 @@ export default function App() {
   const clearRejected = useProject((state) => state.clearRejected)
   const projectName = useProject((state) => state.projectName)
   const projectId = useProject((state) => state.projectId)
+  const pendingRelink = useProject((state) => state.pendingRelink)
   const setProjectName = useProject((state) => state.setProjectName)
   const storageWarning = useProject((state) => state.storageWarning)
   const setStorageWarning = useProject((state) => state.setStorageWarning)
   const setPendingRelink = useProject((state) => state.setPendingRelink)
 
   useEditShortcuts()
+  useCaptionFonts()
   useAutosave()
   const mobile = useIsMobile()
 
@@ -84,6 +88,7 @@ export default function App() {
         subtitles: state.subtitles,
         subtitleStyle: state.subtitleStyle,
         exportSetting: state.exportSetting,
+        look: state.look,
       }),
     )
     setProjectFileUrl((previous) => {
@@ -250,6 +255,9 @@ export default function App() {
         )}
 
         <section className="flex flex-col gap-4">
+          {/* 새 프로젝트를 시작할 때만 묻는다. 저장된 프로젝트를 열거나 원본을
+              다시 찾는 중에는 이미 정해 둔 것이 있다. */}
+          {timeline.length === 0 && !projectId && !pendingRelink && <StartWizard />}
           <FilePicker
             onSelect={handleSelect}
             disabled={importing}

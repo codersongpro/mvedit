@@ -32,6 +32,9 @@ async function collect(dir) {
       continue
     }
     if (info.size > MAX_PRECACHE_BYTES) continue
+    // 자막 글꼴 조각은 1,500개 가까이 된다. 고르지도 않은 글꼴까지 첫 방문에 받게
+    // 할 수 없다. 쓴 글꼴은 서비스 워커가 받은 그대로 캐시에 담는다.
+    if (relative(dist, full).split('\\').join('/').startsWith('fonts/caption/')) continue
     const path = `/${relative(dist, full).split('\\').join('/')}`
     if (!SKIP.has(path.slice(1))) found.push(path)
   }
@@ -40,13 +43,14 @@ async function collect(dir) {
 
 const files = (await collect(dist)).sort()
 const source = await readFile(join(dist, 'sw.js'), 'utf8')
-const buildId = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+const buildId = new Date()
+  .toISOString()
+  .replace(/[^0-9]/g, '')
+  .slice(0, 14)
 
 await writeFile(
   join(dist, 'sw.js'),
-  source
-    .replace('__BUILD_ID__', buildId)
-    .replace('__PRECACHE__', JSON.stringify(files, null, 2)),
+  source.replace('__BUILD_ID__', buildId).replace('__PRECACHE__', JSON.stringify(files, null, 2)),
 )
 
 console.log(`서비스 워커에 ${files.length}개 파일을 캐시 목록으로 넣었습니다 (${buildId})`)

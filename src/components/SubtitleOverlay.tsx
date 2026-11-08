@@ -6,9 +6,11 @@ import {
   clampAnchor,
   frameAt,
   lookOf,
+  fontOf,
   toRuns,
   type SubtitleLook,
 } from '../lib/media/subtitleLook'
+import { captionFont, fontStack, nearestWeight } from '../lib/media/captionFonts'
 
 /** 외곽선을 여덟 방향 그림자로 흉내 낸다. 캔버스의 strokeText 와 두께를 맞춘다. */
 function strokeShadow(look: SubtitleLook): string | undefined {
@@ -61,6 +63,7 @@ export function SubtitleOverlay({
   if (!subtitle.text.trim()) return null
 
   const look = lookOf(style, subtitle.effect?.preset)
+  const fontId = fontOf(subtitle, style)
   const frame = frameAt(subtitle, time)
   const anchor = dragging ?? anchorOf(subtitle, style)
   const chars = [...subtitle.text]
@@ -84,9 +87,10 @@ export function SubtitleOverlay({
         }`}
         style={{
           color: look.fill,
-          fontWeight: look.weight,
+          fontFamily: fontStack(fontId),
+          fontWeight: nearestWeight(fontId, look.weight),
           // 컨테이너 높이의 비율로 잡아야 미리보기와 결과물이 같아진다.
-          fontSize: `${style.fontScale * look.sizeScale * 100}cqh`,
+          fontSize: `${style.fontScale * look.sizeScale * (captionFont(fontId).scale ?? 1) * 100}cqh`,
           textShadow: strokeShadow(look),
           backgroundColor: look.box ?? undefined,
           borderRadius: look.box ? `${look.boxRadius}em` : undefined,

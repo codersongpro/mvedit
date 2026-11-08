@@ -1,3 +1,4 @@
+import type { ProjectLook } from './styles'
 /**
  * 브라우저 저장소 (FR-023, FR-026, FR-031).
  *
@@ -28,6 +29,8 @@ export interface StoredProject {
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
   exportSetting: ExportSetting
+  /** 예전 프로젝트에는 없다 (FR-049) */
+  look?: ProjectLook | null
 }
 
 export interface ProjectSummary {

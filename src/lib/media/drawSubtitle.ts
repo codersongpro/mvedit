@@ -1,5 +1,6 @@
 import type { Subtitle, SubtitleStyle } from '../project/types'
-import { anchorOf, charColors, frameAt, lookOf, toRuns } from './subtitleLook'
+import { anchorOf, charColors, fontOf, frameAt, lookOf, toRuns } from './subtitleLook'
+import { captionFont, fontStack, nearestWeight } from './captionFonts'
 
 type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -26,13 +27,17 @@ export function drawSubtitle(
   const frame = frameAt(subtitle, time)
   if (frame.opacity <= 0) return
 
-  const fontSize = Math.max(8, style.fontScale * look.sizeScale * height)
+  const fontId = fontOf(subtitle, style)
+  const fontSize = Math.max(
+    8,
+    style.fontScale * look.sizeScale * (captionFont(fontId).scale ?? 1) * height,
+  )
   const lineHeight = fontSize * 1.3
   // 좌우 5% 는 미리보기의 px-[5%] 와 같은 여백이다.
   const maxWidth = width * 0.9
 
   context.save()
-  context.font = `${look.weight} ${fontSize}px system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`
+  context.font = `${nearestWeight(fontId, look.weight)} ${fontSize}px ${fontStack(fontId)}`
   context.textAlign = 'left'
   context.textBaseline = 'alphabetic'
 

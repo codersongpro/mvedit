@@ -1,0 +1,99 @@
+[
+  {
+    "id": "pretendard",
+    "label": "Pretendard",
+    "family": "Pretendard Variable",
+    "package": "pretendard",
+    "weights": [400, 500, 600, 700, 800, 900],
+    "hint": "깔끔·기본"
+  },
+  {
+    "id": "ibm-plex-sans-kr",
+    "label": "IBM Plex Sans KR",
+    "family": "IBM Plex Sans KR",
+    "package": "@fontsource/ibm-plex-sans-kr",
+    "weights": [400, 700],
+    "hint": "정보 전달"
+  },
+  {
+    "id": "gothic-a1",
+    "label": "Gothic A1",
+    "family": "Gothic A1",
+    "package": "@fontsource/gothic-a1",
+    "weights": [400, 700, 900],
+    "hint": "힘 있는 고딕"
+  },
+  {
+    "id": "black-han-sans",
+    "label": "Black Han Sans",
+    "family": "Black Han Sans",
+    "package": "@fontsource/black-han-sans",
+    "weights": [400],
+    "hint": "예능 강조"
+  },
+  {
+    "id": "bagel-fat-one",
+    "label": "Bagel Fat One",
+    "family": "Bagel Fat One",
+    "package": "@fontsource/bagel-fat-one",
+    "weights": [400],
+    "hint": "통통 발랄"
+  },
+  {
+    "id": "gasoek-one",
+    "label": "Gasoek One",
+    "family": "Gasoek One",
+    "package": "@fontsource/gasoek-one",
+    "weights": [400],
+    "hint": "썸네일 제목"
+  },
+  {
+    "id": "do-hyeon",
+    "label": "Do Hyeon",
+    "family": "Do Hyeon",
+    "package": "@fontsource/do-hyeon",
+    "weights": [400],
+    "hint": "레트로"
+  },
+  {
+    "id": "jua",
+    "label": "Jua",
+    "family": "Jua",
+    "package": "@fontsource/jua",
+    "weights": [400],
+    "hint": "둥글고 친근"
+  },
+  {
+    "id": "gowun-batang",
+    "label": "Gowun Batang",
+    "family": "Gowun Batang",
+    "package": "@fontsource/gowun-batang",
+    "weights": [400, 700],
+    "hint": "감성 바탕체"
+  },
+  {
+    "id": "hahmlet",
+    "label": "Hahmlet",
+    "family": "Hahmlet",
+    "package": "@fontsource/hahmlet",
+    "weights": [400, 700],
+    "hint": "다큐 명조"
+  },
+  {
+    "id": "orbit",
+    "label": "Orbit",
+    "family": "Orbit",
+    "package": "@fontsource/orbit",
+    "weights": [400],
+    "hint": "네온·미래"
+  },
+  {
+    "id": "nanum-pen-script",
+    "label": "Nanum Pen Script",
+    "family": "Nanum Pen Script",
+    "package": "@fontsource/nanum-pen-script",
+    "weights": [400],
+    "hint": "손글씨",
+    "scale": 1.3
+  }
+]

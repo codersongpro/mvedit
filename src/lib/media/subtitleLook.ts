@@ -229,6 +229,14 @@ export function toRuns(
   return runs
 }
 
+/** 이 자막이 쓸 글씨체 id. 자막마다 고른 것이 전체 설정보다 앞선다. */
+export function fontOf(
+  subtitle: Pick<Subtitle, 'effect'>,
+  style: SubtitleStyle,
+): string | undefined {
+  return subtitle.effect?.font ?? style.font
+}
+
 /** 자막의 화면 속 위치. 가운데 x, 아래에서부터 y (비율). */
 export function anchorOf(
   subtitle: Pick<Subtitle, 'effect'>,

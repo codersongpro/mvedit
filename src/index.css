@@ -5,30 +5,19 @@
  * rounded-m3-lg 같은 유틸리티가 저절로 생긴다.
  *
  * 폰트는 자체 호스팅한다. COEP(require-corp) 때문에 Google Fonts CDN 은
- * 막히고, 오프라인에서도 같은 모양이어야 한다. Roboto 에는 한글이 없어
- * 한글은 기기 기본 고딕으로 떨어진다.
+ * 막히고, 오프라인에서도 같은 모양이어야 한다. 앱 화면은 Pretendard 로 고정한다
+ * (FR-050). 한글·영문·숫자가 한 글꼴로 맞고, 가변 글꼴이라 파일 하나로 모든 굵기를
+ * 낸다. 파일은 빌드할 때 scripts/fonts.mjs 가 npm 패키지에서 옮겨 둔다.
  */
 @font-face {
-  font-family: 'Roboto';
-  font-weight: 400;
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
   font-display: swap;
-  src: url('/fonts/Roboto-Regular.woff2') format('woff2');
+  src: url('/fonts/PretendardVariable.woff2') format('woff2-variations');
 }
-@font-face {
-  font-family: 'Roboto';
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/Roboto-Medium.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Roboto';
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/Roboto-Bold.woff2') format('woff2');
-}
-
 @theme {
-  --font-sans: 'Roboto', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --font-sans: 'Pretendard Variable', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   --font-mono: 'Roboto Mono', ui-monospace, monospace;
 
   /* 색 역할 — 라이트 (M3 baseline) */

@@ -2,6 +2,7 @@ import { useProject } from '../lib/project/store'
 import type { Subtitle, SubtitleEffect } from '../lib/project/types'
 import { ANIMATIONS, PRESETS } from '../lib/media/subtitleLook'
 import { Chip, Row, btn } from './m3'
+import { FontPicker } from './FontPicker'
 
 const POSITIONS: { id: string; label: string; position: SubtitleEffect['position'] }[] = [
   { id: 'default', label: '기본', position: undefined },
@@ -55,6 +56,14 @@ export function SubtitleEffectEditor({ subtitle }: { subtitle: Subtitle }) {
             {animation.label}
           </Chip>
         ))}
+      </Row>
+      <Row label="글씨체" width="sm:w-[72px]">
+        <FontPicker
+          value={effect.font}
+          testIdPrefix="effect-font"
+          inheritLabel="전체 설정 따름"
+          onChange={(font) => set({ font })}
+        />
       </Row>
       <Row label="강조" width="sm:w-[72px]">
         <Chip
