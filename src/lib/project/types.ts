@@ -165,6 +165,8 @@ export interface SubtitleEffect {
   animation?: SubtitleAnimation
   /** 말하는 단어만 강조색으로 */
   highlight?: boolean
+  /** 이 자막만의 글씨체. 없으면 자막 모양(전체)의 글씨체를 따른다 */
+  font?: string
   /**
    * 화면 속 위치. x 는 가운데의 가로 비율, y 는 아래에서부터의 비율.
    * 없으면 프로젝트 자막 모양의 세로 위치에 가운데 정렬.
@@ -187,6 +189,8 @@ export interface SubtitleStyle {
   backgroundOpacity: number
   /** 아래에서부터의 비율 */
   verticalPosition: number
+  /** 자막 글씨체(FR-050). 없으면 Pretendard. 목록은 media/captionFonts */
+  font?: string
 }
 
 export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {

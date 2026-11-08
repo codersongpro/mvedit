@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/inject-sw.mjs",
+    "dev": "node scripts/fonts.mjs && vite",
+    "build": "node scripts/fonts.mjs && tsc --noEmit && vite build && node scripts/inject-sw.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:e2e": "node tests/export.e2e.mjs",
@@ -15,7 +15,7 @@
     "test:preview": "node tests/preview.e2e.mjs",
     "test:subtitle": "node tests/subtitle.e2e.mjs",
     "test:compose": "node tests/compose.e2e.mjs",
-    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:preview && npm run test:subtitle && npm run test:autocaption && npm run test:template && npm run test:start && npm run test:subtitlefx && npm run test:visualfx && npm run test:stickerfx && npm run test:project && npm run test:mobile && npm run test:offline && npm run test:perf && npm run test:compose && npm run test:audiofade && npm run test:e2e",
+    "test": "npm run test:import && npm run test:edit && npm run test:clip && npm run test:preview && npm run test:subtitle && npm run test:autocaption && npm run test:template && npm run test:start && npm run test:subtitlefx && npm run test:visualfx && npm run test:stickerfx && npm run test:fonts && npm run test:project && npm run test:mobile && npm run test:offline && npm run test:perf && npm run test:compose && npm run test:audiofade && npm run test:e2e",
     "test:project": "node tests/project.e2e.mjs",
     "test:mobile": "node tests/mobile.e2e.mjs",
     "icons": "node scripts/make-icons.mjs",
@@ -27,7 +27,9 @@
     "test:subtitlefx": "node tests/subtitlefx.e2e.mjs",
     "test:visualfx": "node tests/visualfx.e2e.mjs",
     "test:stickerfx": "node tests/stickerfx.e2e.mjs",
-    "test:start": "node tests/start.e2e.mjs"
+    "test:start": "node tests/start.e2e.mjs",
+    "fonts": "node scripts/fonts.mjs",
+    "test:fonts": "node tests/fonts.e2e.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",
@@ -38,10 +40,22 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@fontsource/bagel-fat-one": "^5.3.0",
+    "@fontsource/black-han-sans": "^5.3.0",
+    "@fontsource/do-hyeon": "^5.3.0",
+    "@fontsource/gasoek-one": "^5.3.0",
+    "@fontsource/gothic-a1": "^5.3.0",
+    "@fontsource/gowun-batang": "^5.3.0",
+    "@fontsource/hahmlet": "^5.3.0",
+    "@fontsource/ibm-plex-sans-kr": "^5.3.0",
+    "@fontsource/jua": "^5.3.0",
+    "@fontsource/nanum-pen-script": "^5.3.0",
+    "@fontsource/orbit": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "pretendard": "^1.3.9",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.0",
     "vite": "^8.3.0"

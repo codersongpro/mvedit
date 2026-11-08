@@ -101,8 +101,13 @@ export function styleOf(look: ProjectLook | null | undefined): StyleTemplate | n
 
 /** 자막 하나에 스타일을 입힌다. 사용자가 옮겨 둔 위치는 지킨다. */
 export function styleSubtitle(subtitle: Subtitle, style: StyleTemplate): Subtitle {
+  // 위치와 글씨체는 사용자가 이 자막에 직접 정한 것이라 스타일을 바꿔도 지킨다.
   const position = subtitle.effect?.position
-  return { ...subtitle, effect: { ...style.subtitleEffect, ...(position && { position }) } }
+  const font = subtitle.effect?.font
+  return {
+    ...subtitle,
+    effect: { ...style.subtitleEffect, ...(position && { position }), ...(font && { font }) },
+  }
 }
 
 /**

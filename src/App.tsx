@@ -28,6 +28,7 @@ import {
 } from './lib/project/file'
 import { detectCapabilities, type Capabilities } from './lib/capabilities'
 import { useEditShortcuts } from './lib/useEditShortcuts'
+import { useCaptionFonts } from './lib/useCaptionFonts'
 import { useIsMobile } from './lib/useIsMobile'
 import { timelineNotices } from './lib/project/limits'
 import { CheckIcon, DownloadIcon, SettingsIcon, VideocamIcon } from './components/icons'
@@ -54,6 +55,7 @@ export default function App() {
   const setPendingRelink = useProject((state) => state.setPendingRelink)
 
   useEditShortcuts()
+  useCaptionFonts()
   useAutosave()
   const mobile = useIsMobile()
 

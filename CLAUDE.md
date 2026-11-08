@@ -21,7 +21,7 @@
 
 ```bash
 npm run build   # 타입 검사 + 빌드 + 서비스 워커 캐시 목록 주입
-npm test        # 17개 스위트 전부 (Playwright, 실제 UI 로 확인)
+npm test        # 18개 스위트 전부 (Playwright, 실제 UI 로 확인)
 ```
 
 - 모든 검증은 **프로덕션 빌드를 띄워** 돌린다. 코드를 고쳤으면 빌드부터 한다.
@@ -32,6 +32,9 @@ npm test        # 17개 스위트 전부 (Playwright, 실제 UI 로 확인)
 
 ## 코드 스타일
 
+- 글꼴 파일(Pretendard·자막 글꼴)은 저장소에 없다. `npm run build`·`npm run dev` 가
+  `scripts/fonts.mjs` 로 npm 패키지에서 `public/fonts` 에 복사한다. 자막 글꼴을
+  늘리려면 `src/lib/media/captionFonts.json` 과 devDependencies 에 함께 넣는다.
 - 포맷은 `.prettierrc` (작은따옴표, 세미콜론 없음, 100칸). 설정 없이 prettier 를
   돌리면 저장소 전체가 재포맷되므로 항상 이 설정을 쓴다.
 - 컨테이너 Chromium 에는 H.264·AAC 인코더가 없다. 자동 검증은 VP9/Opus 로

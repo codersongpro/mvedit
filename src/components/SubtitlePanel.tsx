@@ -8,6 +8,7 @@ import { DeleteIcon, ExpandMoreIcon } from './icons'
 import { Chip, Row, Segmented, TextField, btn } from './m3'
 import { AutoCaption } from './AutoCaption'
 import { SubtitleEffectEditor } from './SubtitleEffectEditor'
+import { FontPicker } from './FontPicker'
 
 const FONT_SIZES = [
   { value: 0.035, label: '작게' },
@@ -41,6 +42,7 @@ export function SubtitlePanel() {
   const segments = useMemo(() => toSegments(timeline), [timeline])
   /** 꾸미기 칸은 한 번에 하나만 연다. 여러 개 열면 목록이 끝없이 길어진다. */
   const [decorating, setDecorating] = useState<string | null>(null)
+  const [styleOpen, setStyleOpen] = useState(false)
 
   /** 자막이 타임라인 어디쯤에 놓이는지 계산해 재생 순서로 정렬한다. */
   const rows = useMemo(() => {
@@ -168,6 +170,7 @@ export function SubtitlePanel() {
       <details
         className="group rounded-m3-lg border border-outline-variant bg-surface-container-low"
         data-testid="subtitle-style"
+        onToggle={(event) => setStyleOpen(event.currentTarget.open)}
       >
         <summary className="state-layer flex h-14 cursor-pointer list-none items-center justify-between rounded-m3-lg px-4 m3-title-small text-on-surface [&::-webkit-details-marker]:hidden">
           자막 모양 (전체 적용)
@@ -178,6 +181,17 @@ export function SubtitlePanel() {
         </summary>
 
         <div className="flex flex-col gap-4 px-4 pt-1 pb-4">
+          {/* 닫혀 있을 때는 글꼴 목록을 받지 않는다. */}
+          {styleOpen && (
+            <Row label="글씨체" width="sm:w-[88px]">
+              <FontPicker
+                value={style.font}
+                testIdPrefix="caption-font"
+                onChange={(font) => setSubtitleStyle({ font })}
+              />
+            </Row>
+          )}
+
           <Row label="글자 크기" width="sm:w-[88px]">
             {FONT_SIZES.map((size) => (
               <Chip
