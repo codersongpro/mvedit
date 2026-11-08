@@ -318,9 +318,10 @@ export const useProject = create<ProjectState>((set, get) => {
       const { timeline, subtitles, playhead } = get()
       const result = splitAt(timeline, playhead)
       if (!result) return
+      const original = timeline[result.index]
       commit(
         result.items,
-        splitSubtitles(subtitles, result.originalId, result.leftId, result.rightId, result.cut),
+        splitSubtitles(subtitles, original, result.leftId, result.rightId, result.cut),
       )
     },
 

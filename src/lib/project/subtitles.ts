@@ -3,6 +3,7 @@ import {
   MIN_SUBTITLE_SECONDS,
   usesSourceTime,
   type Subtitle,
+  type SubtitleWord,
   type TimelineItem,
 } from './types'
 
@@ -43,30 +44,41 @@ export function subtitlesOfClip(subtitles: Subtitle[], clipId: string): Subtitle
 /**
  * 클립을 둘로 나눌 때 자막도 경계에서 나눈다 (AC-041).
  *
- * 경계에 걸친 자막은 양쪽에 하나씩 남겨 글자가 끊기지 않게 한다.
+ * 경계에 걸친 자막은 양쪽에 하나씩 남겨 글자가 끊기지 않게 한다. 사진·빈 화면은
+ * 오른쪽 조각이 0부터 다시 세므로 그쪽 자막 시각을 자른 만큼 당긴다. 그러지 않으면
+ * 원래보다 늦게 나오거나 조각 범위를 벗어나 사라진다 (스티커와 같은 규칙).
  */
 export function splitSubtitles(
   subtitles: Subtitle[],
-  clipId: string,
+  item: TimelineItem,
   leftId: string,
   rightId: string,
   cut: number,
 ): Subtitle[] {
+  const shift = usesSourceTime(item) ? 0 : cut
+  const shiftWords = (words: SubtitleWord[]) =>
+    words.map((word) => ({ ...word, start: word.start - shift, end: word.end - shift }))
   const result: Subtitle[] = []
 
   for (const subtitle of subtitles) {
-    if (subtitle.clipId !== clipId) {
+    if (subtitle.clipId !== item.id) {
       result.push(subtitle)
       continue
     }
 
+    const words = subtitle.words
     if (subtitle.end <= cut) {
       result.push({ ...subtitle, clipId: leftId })
     } else if (subtitle.start >= cut) {
-      result.push({ ...subtitle, clipId: rightId })
+      result.push({
+        ...subtitle,
+        clipId: rightId,
+        start: subtitle.start - shift,
+        end: subtitle.end - shift,
+        ...(words && { words: shiftWords(words) }),
+      })
     } else {
       // 단어는 시작 시각 기준으로 한쪽에만 둔다. 양쪽에 두면 경계 단어가 두 번 빛난다.
-      const words = subtitle.words
       result.push({
         ...subtitle,
         clipId: leftId,
@@ -77,8 +89,9 @@ export function splitSubtitles(
         ...subtitle,
         id: crypto.randomUUID(),
         clipId: rightId,
-        start: cut,
-        ...(words && { words: words.filter((word) => word.start >= cut) }),
+        start: cut - shift,
+        end: subtitle.end - shift,
+        ...(words && { words: shiftWords(words.filter((word) => word.start >= cut)) }),
       })
     }
   }

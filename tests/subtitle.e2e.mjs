@@ -189,6 +189,64 @@ try {
   await seekTo(3.5)
   check('AC-041 자른 뒤 구간에서도 이어서 보임', (await overlayText()) === '안녕하세요')
 
+  // ---------- AC-041 사진·빈 화면을 잘라도 자막 시점이 그대로다 ----------
+  // 사진·빈 화면 자막은 0부터 세는 클립 시간축에 있다. 오른쪽 조각도 0부터
+  // 다시 세므로, 자른 만큼 당겨 주지 않으면 늦게 나오거나 아예 사라진다.
+  await load([`가.${clip.extension}`])
+  await seekTo(9.95) // 영상 끝 — 남는 길이가 너무 짧아 자르지 않고 뒤에 붙인다
+  await page.click('[data-testid="insert-blank"]')
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="clip"]').length === 2)
+  await page.locator('[data-clip-type="blank"]').click()
+  await page.fill('[data-testid="duration-input"]', '5')
+  await page.waitForFunction(() =>
+    document.querySelector('[data-testid="timeline-duration"]').textContent.includes('00:15'),
+  )
+  // 빈 화면(10~15초) 안의 12.5~14.5초 자막
+  await seekTo(12.5)
+  await page.click('[data-testid="add-subtitle"]')
+  await page.fill('[data-testid="subtitle-text"]', '빈화면자막')
+
+  const probes = [12.2, 12.8, 14, 14.8]
+  async function overlayAtProbes() {
+    const seen = []
+    for (const at of probes) {
+      await seekTo(at)
+      seen.push(await overlayText())
+    }
+    return seen
+  }
+  const expected = [null, '빈화면자막', '빈화면자막', null]
+  const blankBefore = await overlayAtProbes()
+  check(
+    'AC-041 준비: 빈 화면 자막이 12.5~14.5초에 보임',
+    JSON.stringify(blankBefore) === JSON.stringify(expected),
+    JSON.stringify(blankBefore),
+  )
+
+  // 자막에 걸친 지점에서 자른다.
+  await seekTo(13.5)
+  await page.click('[data-testid="split"]')
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="clip"]').length === 3)
+  const blankAfterMid = await overlayAtProbes()
+  check(
+    'AC-041 빈 화면을 자막에 걸쳐 잘라도 같은 시점에 보임',
+    JSON.stringify(blankAfterMid) === JSON.stringify(expected),
+    JSON.stringify(blankAfterMid),
+  )
+
+  // 자막보다 앞에서 자른다. 자막 전체가 오른쪽 조각으로 간다.
+  await page.click('[data-testid="undo"]')
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="clip"]').length === 2)
+  await seekTo(11)
+  await page.click('[data-testid="split"]')
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="clip"]').length === 3)
+  const blankAfterEarly = await overlayAtProbes()
+  check(
+    'AC-041 빈 화면을 자막 앞에서 잘라도 같은 시점에 보임',
+    JSON.stringify(blankAfterEarly) === JSON.stringify(expected),
+    JSON.stringify(blankAfterEarly),
+  )
+
   // ---------- AC-040 클립을 옮기면 자막도 따라간다 ----------
   await load([`가.${clip.extension}`, `나.${clip.extension}`])
   await seekTo(12) // 두 번째 클립 안 (10~20초)
