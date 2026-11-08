@@ -2,7 +2,8 @@ import { useProject } from '../lib/project/store'
 import { TEMPLATES, matchTemplate, type Template } from '../lib/project/templates'
 import { timelineDuration } from '../lib/project/types'
 import { formatClock } from '../lib/format'
-import { notice } from './m3'
+import { Chip, notice } from './m3'
+import { STYLES, STYLES_BY_KIND } from '../lib/project/styles'
 
 /** 템플릿마다 화면 모양을 작게 그려 숫자 없이도 고를 수 있게 한다. */
 function Frame({ template }: { template: Template }) {
@@ -32,18 +33,18 @@ export function TemplatePicker() {
   const timeline = useProject((state) => state.timeline)
   const setting = useProject((state) => state.exportSetting)
   const style = useProject((state) => state.subtitleStyle)
-  const setExportSetting = useProject((state) => state.setExportSetting)
-  const setSubtitleStyle = useProject((state) => state.setSubtitleStyle)
+  const look = useProject((state) => state.look)
+  const setLookKind = useProject((state) => state.setLookKind)
+  const setLookStyle = useProject((state) => state.setLookStyle)
 
   const active = matchTemplate(setting, style)
   const duration = timelineDuration(timeline)
   const tooLong = active?.maxSeconds != null && duration > active.maxSeconds
 
-  const apply = (template: Template) => {
-    // 목표 용량은 올릴 곳이 아니라 보낼 곳(메신저 등)에 따라 정하는 값이라 건드리지 않는다.
-    setExportSetting(template.export)
-    setSubtitleStyle(template.subtitle)
-  }
+  // 목표 용량은 올릴 곳이 아니라 보낼 곳(메신저 등)에 따라 정하는 값이라 건드리지 않는다.
+  const apply = (template: Template) => setLookKind(template.id)
+  // 스타일 목록은 지금 화면과 맞는 종류를 따른다. 설정을 손으로 바꿨으면 처음 고른 종류를 쓴다.
+  const kindForStyles = active?.id ?? look?.kind ?? null
 
   return (
     <div className="flex flex-col gap-3" data-testid="template-picker">
@@ -72,6 +73,24 @@ export function TemplatePicker() {
           )
         })}
       </div>
+      {kindForStyles && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="style-picker">
+          <span className="mx-1 m3-body-medium text-on-surface-variant">스타일</span>
+          {STYLES_BY_KIND[kindForStyles].map((id) => (
+            <Chip
+              key={id}
+              testId={`style-${id}`}
+              active={look?.style === id}
+              onClick={() => setLookStyle(id)}
+            >
+              {STYLES[id].label}
+            </Chip>
+          ))}
+          <span className="m3-body-small text-on-surface-variant">
+            고르면 지금 있는 자막·클립 전체의 꾸미기·색감·전환이 바뀝니다(되돌리기 가능).
+          </span>
+        </div>
+      )}
       <p className="mx-1 m3-body-small text-on-surface-variant">
         {active
           ? `‘${active.label}’에 맞춘 화면비·해상도·화질·자막 모양을 쓰는 중입니다. 아래에서 하나씩 바꿀 수도 있습니다.`

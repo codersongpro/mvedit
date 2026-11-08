@@ -24,6 +24,17 @@ import {
 import type { ProjectFile } from './file'
 import { fitResolution, shortSide } from '../media/outputSize'
 import { DEFAULT_STICKER_SECONDS, DEFAULT_STICKER_SIZE } from '../media/stickers'
+import { TEMPLATES, matchTemplate } from './templates'
+import {
+  STYLES,
+  STYLES_BY_KIND,
+  styleItems,
+  styleOf,
+  styleSubtitle,
+  type ProjectLook,
+  type StyleId,
+  type StyleTemplate,
+} from './styles'
 import { segmentAt, sourceTimeAt, toSegments } from './playback'
 import { clipRange, normalizeSubtitle, pruneSubtitles, splitSubtitles } from './subtitles'
 import {
@@ -65,6 +76,10 @@ interface ProjectState {
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
   exportSetting: ExportSetting
+  /** 처음에 고른 영상 종류·스타일 (FR-049). 새로 넣는 클립·자막이 따른다 */
+  look: ProjectLook | null
+  /** 시작 화면에서 고르지 않고 바로 영상을 넣겠다고 한 경우 */
+  startSkipped: boolean
 
   /** 되돌리기용 이전 상태들. 가장 최근이 배열 끝. */
   past: Snapshot[]
@@ -101,6 +116,15 @@ interface ProjectState {
    * 않으므로 기본 길이로 함께 건다. 한 번의 되돌리기로 둘 다 돌아간다.
    */
   setTransitionAll: (transition: TransitionId) => void
+  /** 종류·스타일을 한 번에 고른다. 이미 넣은 클립·자막에도 입힌다 */
+  chooseLook: (look: ProjectLook) => void
+  /** 종류만 바꾼다(화면비·자막 모양). 스타일은 그 종류에 있으면 유지한다 */
+  setLookKind: (kind: ProjectLook['kind']) => void
+  /** 스타일만 바꾼다. 모든 클립·자막에 입힌다 */
+  setLookStyle: (style: StyleId) => void
+  /** 시작 화면으로 돌아가 다시 고른다 */
+  clearLook: () => void
+  skipStart: () => void
   /** 재생헤드 자리에 순간 효과를 넣는다 (FR-048) */
   addMoment: (kind: MomentKind) => void
   /** 재생헤드 자리에 스티커를 넣고 고른다 */
@@ -148,6 +172,7 @@ export interface PendingRelink {
 }
 
 export interface RestorePayload {
+  look?: ProjectLook | null
   projectId: string
   projectName: string
   sources: MediaSource[]
@@ -161,6 +186,11 @@ export interface RestorePayload {
 interface Snapshot {
   timeline: TimelineItem[]
   subtitles: Subtitle[]
+  /**
+   * 고른 스타일. 스타일을 바꾸면 클립·자막이 함께 바뀌므로, 되돌릴 때 스타일
+   * 표시도 같이 돌아가야 "예능이 골라져 있는데 화면은 정보 전달" 같은 어긋남이 없다.
+   */
+  look: ProjectLook | null
 }
 
 const EMPTY = {
@@ -173,6 +203,8 @@ const EMPTY = {
   subtitles: [] as Subtitle[],
   subtitleStyle: DEFAULT_SUBTITLE_STYLE,
   exportSetting: DEFAULT_EXPORT_SETTING,
+  look: null as ProjectLook | null,
+  startSkipped: false,
   rejected: [] as RejectedFile[],
   importing: false,
   selectedItemId: null,
@@ -216,9 +248,10 @@ export const useProject = create<ProjectState>((set, get) => {
     set((state) => {
       const subtitles = pruneSubtitles(nextSubtitles ?? state.subtitles, next)
       return {
-        past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
-          -HISTORY_LIMIT,
-        ),
+        past: [
+          ...state.past,
+          { timeline: state.timeline, subtitles: state.subtitles, look: state.look },
+        ].slice(-HISTORY_LIMIT),
         timeline: next,
         subtitles,
         future: [],
@@ -239,6 +272,33 @@ export const useProject = create<ProjectState>((set, get) => {
     return { segment, sourceTime: sourceTimeAt(segment, playhead) }
   }
 
+  /** 종류 템플릿의 화면비·해상도·자막 모양을 입힌다. 출력 설정은 되돌리기 대상이 아니다. */
+  const applyKind = (kind: ProjectLook['kind']) => {
+    const template = TEMPLATES.find((candidate) => candidate.id === kind)
+    if (!template) return
+    set((state) => ({
+      exportSetting: { ...state.exportSetting, ...template.export },
+      subtitleStyle: { ...state.subtitleStyle, ...template.subtitle },
+    }))
+  }
+
+  /** 이미 있는 클립·자막 전체에 스타일을 입힌다. 되돌리기 한 번에 돌아간다. */
+  const restyleAll = (style: StyleTemplate) => {
+    const { timeline, subtitles } = get()
+    if (timeline.length === 0 && subtitles.length === 0) return
+    commit(
+      styleItems(timeline, style),
+      subtitles.map((subtitle) => styleSubtitle(subtitle, style)),
+    )
+  }
+
+  /** 새로 들어온 클립에만 스타일을 입혀 붙인다. 이미 손댄 클립은 건드리지 않는다. */
+  const lookItems = (state: ProjectState, items: TimelineItem[]) => {
+    const style = styleOf(state.look)
+    const next = [...state.timeline, ...items]
+    return style ? styleItems(next, style, new Set(items.map((item) => item.id))) : next
+  }
+
   return {
     ...EMPTY,
 
@@ -252,14 +312,17 @@ export const useProject = create<ProjectState>((set, get) => {
             ? (sources[0]?.fileName.replace(/\.[^.]+$/, '') ?? state.projectName)
             : state.projectName,
         sources: [...state.sources, ...sources],
-        past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
-          -HISTORY_LIMIT,
-        ),
-        timeline: [...state.timeline, ...items],
+        past: [
+          ...state.past,
+          { timeline: state.timeline, subtitles: state.subtitles, look: state.look },
+        ].slice(-HISTORY_LIMIT),
+        timeline: lookItems(state, items),
         future: [],
         rejected,
         importing: false,
-        exportSetting: defaultSettingFor(state, sources),
+        // 종류를 골랐으면 그 해상도를 지킨다. 원본에 맞춰 낮추면 쇼츠 1080×1920 이
+        // 720 원본 때문에 몰래 바뀌어 고른 템플릿과 어긋난다.
+        exportSetting: state.look ? state.exportSetting : defaultSettingFor(state, sources),
       })),
 
     setImporting: (importing) => set({ importing }),
@@ -279,6 +342,7 @@ export const useProject = create<ProjectState>((set, get) => {
         subtitles: payload.subtitles,
         subtitleStyle: payload.subtitleStyle,
         exportSetting: payload.exportSetting,
+        look: payload.look ?? null,
       }),
 
     // 클립과 자막은 한 번에 하나만 고른다. 둘 다 골라져 있으면 Delete 가
@@ -437,6 +501,32 @@ export const useProject = create<ProjectState>((set, get) => {
       )
     },
 
+    chooseLook: (look) => {
+      applyKind(look.kind)
+      // 먼저 입히고 나서 고른 것을 적는다. 되돌리기 기록에 이전 스타일이 남아야 한다.
+      restyleAll(STYLES[look.style])
+      set({ look, startSkipped: false })
+    },
+
+    setLookKind: (kind) => {
+      applyKind(kind)
+      const current = get().look
+      // 새 종류에 없는 스타일이면 깔끔으로 둔다. 효과는 이미 입혀 둔 그대로 남는다.
+      const style =
+        current && STYLES_BY_KIND[kind].includes(current.style) ? current.style : 'clean'
+      set({ look: { kind, style } })
+    },
+
+    setLookStyle: (style) => {
+      const kind = get().look?.kind ?? matchTemplate(get().exportSetting, get().subtitleStyle)?.id
+      if (!kind) return
+      restyleAll(STYLES[style])
+      set({ look: { kind, style } })
+    },
+
+    clearLook: () => set({ look: null, startSkipped: false }),
+    skipStart: () => set({ startSkipped: true }),
+
     setColor: (id, color) => {
       const next = setBlankColor(get().timeline, id, color)
       if (next) commit(next)
@@ -474,13 +564,15 @@ export const useProject = create<ProjectState>((set, get) => {
       const end = Math.min(start + DEFAULT_SUBTITLE_SECONDS, range.end)
       if (end - start < MIN_SUBTITLE_SECONDS) return
 
-      const subtitle: Subtitle = {
+      const base: Subtitle = {
         id: crypto.randomUUID(),
         clipId: segment.item.id,
         start,
         end,
         text,
       }
+      const style = styleOf(get().look)
+      const subtitle = style ? styleSubtitle(base, style) : base
       commit(get().timeline, [...get().subtitles, subtitle])
       get().selectSubtitle(subtitle.id)
     },
@@ -524,12 +616,14 @@ export const useProject = create<ProjectState>((set, get) => {
           ? subtitles.filter((subtitle) => !touched.has(subtitle.clipId))
           : subtitles
       const created: Subtitle[] = []
+      const style = styleOf(get().look)
       for (const { clipId, lines } of results) {
         const item = items.get(clipId)
         // 인식하는 동안 클립이 지워졌으면 결과도 버린다.
         if (!item) continue
         for (const line of lines) {
-          created.push(normalizeSubtitle({ ...line, id: crypto.randomUUID(), clipId }, item))
+          const made = normalizeSubtitle({ ...line, id: crypto.randomUUID(), clipId }, item)
+          created.push(style ? styleSubtitle(made, style) : made)
         }
       }
       // 클립 여러 개를 한 번에 처리해도 되돌리기 한 번으로 통째로 돌아가야 한다.
@@ -559,10 +653,11 @@ export const useProject = create<ProjectState>((set, get) => {
           past: state.past.slice(0, -1),
           timeline: previous.timeline,
           subtitles: previous.subtitles,
-          future: [{ timeline: state.timeline, subtitles: state.subtitles }, ...state.future].slice(
-            0,
-            HISTORY_LIMIT,
-          ),
+          look: previous.look,
+          future: [
+            { timeline: state.timeline, subtitles: state.subtitles, look: state.look },
+            ...state.future,
+          ].slice(0, HISTORY_LIMIT),
           playing: false,
           playhead: clampPlayhead(previous.timeline, state.playhead),
           selectedItemId: previous.timeline.some((item) => item.id === state.selectedItemId)
@@ -576,11 +671,13 @@ export const useProject = create<ProjectState>((set, get) => {
         const [next, ...rest] = state.future
         if (!next) return state
         return {
-          past: [...state.past, { timeline: state.timeline, subtitles: state.subtitles }].slice(
-            -HISTORY_LIMIT,
-          ),
+          past: [
+            ...state.past,
+            { timeline: state.timeline, subtitles: state.subtitles, look: state.look },
+          ].slice(-HISTORY_LIMIT),
           timeline: next.timeline,
           subtitles: next.subtitles,
+          look: next.look,
           future: rest,
           playing: false,
           playhead: clampPlayhead(next.timeline, state.playhead),

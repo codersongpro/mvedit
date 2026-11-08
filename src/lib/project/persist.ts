@@ -32,6 +32,7 @@ function snapshotOf(state: ReturnType<typeof useProject.getState>): StoredProjec
     subtitles: state.subtitles,
     subtitleStyle: state.subtitleStyle,
     exportSetting: state.exportSetting,
+    look: state.look,
   }
 }
 
@@ -74,6 +75,7 @@ export function useAutosave(): void {
         state.subtitles === previous.subtitles &&
         state.subtitleStyle === previous.subtitleStyle &&
         state.exportSetting === previous.exportSetting &&
+        state.look === previous.look &&
         state.sources === previous.sources
       ) {
         return
@@ -154,6 +156,7 @@ export async function openProject(id: string): Promise<{ missing: string[] } | n
     subtitles: project.subtitles.filter((subtitle) => keptItems.has(subtitle.clipId)),
     subtitleStyle: project.subtitleStyle,
     exportSetting: project.exportSetting,
+    look: project.look ?? null,
   })
 
   if (missing.length > 0) {

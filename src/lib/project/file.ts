@@ -6,6 +6,7 @@
  * 다시 골라야 하므로, 무엇이 필요한지 파일 이름과 크기로 알려 준다 (AC-029).
  */
 import type { ExportSetting, MediaSource, Subtitle, SubtitleStyle, TimelineItem } from './types'
+import type { ProjectLook } from './styles'
 
 export const PROJECT_FILE_EXTENSION = 'cutcap'
 const FORMAT = 'cutcap-project'
@@ -24,6 +25,8 @@ export interface ProjectFile {
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
   exportSetting: ExportSetting
+  /** 예전 파일에는 없다 (FR-049) */
+  look?: ProjectLook | null
 }
 
 export interface ProjectFileInput {
@@ -33,6 +36,7 @@ export interface ProjectFileInput {
   subtitles: Subtitle[]
   subtitleStyle: SubtitleStyle
   exportSetting: ExportSetting
+  look?: ProjectLook | null
 }
 
 export function buildProjectFile(input: ProjectFileInput): ProjectFile {
@@ -46,6 +50,7 @@ export function buildProjectFile(input: ProjectFileInput): ProjectFile {
     subtitles: input.subtitles,
     subtitleStyle: input.subtitleStyle,
     exportSetting: input.exportSetting,
+    look: input.look ?? null,
   }
 }
 
